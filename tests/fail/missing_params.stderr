@@ -1,0 +1,7 @@
+error: missing condition to check
+ --> tests/fail/missing_params.rs:2:5
+  |
+2 |     one_assert::assert!();
+  |     ^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the macro `one_assert::assert` (in Nightly builds, run with -Z macro-backtrace for more info)

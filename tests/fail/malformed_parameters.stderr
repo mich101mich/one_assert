@@ -1,0 +1,25 @@
+error: 1 positional argument in format string, but no arguments were given
+ --> tests/fail/malformed_parameters.rs:2:32
+  |
+2 |     one_assert::assert!(true, "{}");
+  |                                ^^
+
+error: condition has to be followed by a comma, if a message is provided
+ --> tests/fail/malformed_parameters.rs:3:30
+  |
+3 |     one_assert::assert!(true "{}");
+  |                              ^^^^
+
+error: expected expression, found `,`
+ --> tests/fail/malformed_parameters.rs:4:31
+  |
+4 |     one_assert::assert!(true, , "{}");
+  |                               ^ expected expression
+
+error: argument never used
+ --> tests/fail/malformed_parameters.rs:5:42
+  |
+5 |     one_assert::assert!(1 == 2, "{}", 1, 2);
+  |                                 ----     ^ argument never used
+  |                                 |
+  |                                 formatting specifier missing

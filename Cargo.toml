@@ -1,0 +1,27 @@
+[package]
+name = "one_assert"
+version = "0.1.0"
+edition = "2021"
+authors = ["mich101mich <mich101mich@gmail.com>"]
+rust-version = "1.70.0"
+description = "One assert! macro to rule them all"
+repository = "https://github.com/mich101mich/one_assert"
+readme = "Readme.md"
+license = "MIT OR Apache-2.0"
+keywords = ["testing", "assert", "macro", "test", "assertion"]
+categories = ["development-tools::testing"]
+exclude = ["/.vscode/*", "/.gitignore", "/.github/*", "/*.bat", "/*.sh"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2.0.1", features = ["parsing", "derive", "full"] }
+quote = "1.0.0"
+proc-macro2 = "1.0.60"
+unicode-width = "0.1.5"
+
+[dev-dependencies]
+trybuild = "1.0.78"
+rustc_version = "0.4.0"
+thiserror = "1.0.37"

@@ -1,0 +1,35 @@
+error: incomplete expression
+ --> tests/fail/malformed_expr.rs:2:25
+  |
+2 |     one_assert::assert!(1 ==);
+  |                         ^^^^
+
+error: incomplete expression
+ --> tests/fail/malformed_expr.rs:3:25
+  |
+3 |     one_assert::assert!(1 ==, "hi");
+  |                         ^^^^^^^^^^
+
+error: expected an expression
+ --> tests/fail/malformed_expr.rs:4:25
+  |
+4 |     one_assert::assert!(== 1);
+  |                         ^
+
+error: expected an expression
+ --> tests/fail/malformed_expr.rs:5:25
+  |
+5 |     one_assert::assert!(== 1, "hi");
+  |                         ^
+
+error: expected an expression
+ --> tests/fail/malformed_expr.rs:6:25
+  |
+6 |     one_assert::assert!(==);
+  |                         ^
+
+error: expected an expression
+ --> tests/fail/malformed_expr.rs:7:25
+  |
+7 |     one_assert::assert!(==, "hi");
+  |                         ^

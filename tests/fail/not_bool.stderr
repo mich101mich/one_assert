@@ -1,0 +1,23 @@
+error[E0308]: mismatched types
+ --> tests/fail/not_bool.rs:2:25
+  |
+2 |     one_assert::assert!(5);
+  |                         ^ expected `bool`, found integer
+
+error[E0308]: mismatched types
+ --> tests/fail/not_bool.rs:3:25
+  |
+3 |     one_assert::assert!(5, "hi");
+  |                         ^ expected `bool`, found integer
+
+error[E0308]: mismatched types
+ --> tests/fail/not_bool.rs:4:25
+  |
+4 |     one_assert::assert!(1 + 2);
+  |                         ^^^^^ expected `bool`, found integer
+
+error[E0308]: mismatched types
+ --> tests/fail/not_bool.rs:5:25
+  |
+5 |     one_assert::assert!(1 + 2, "hi");
+  |                         ^^^^^ expected `bool`, found integer

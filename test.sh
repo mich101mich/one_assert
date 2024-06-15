@@ -83,7 +83,7 @@ export RUSTDOCFLAGS="-D warnings"
 (
     cd "${MSRV_DIR}" || exit 1
     try_silent rustup install "${MSRV}" || exit 1
-    try_silent cargo "+${MSRV}" test || exit 1
+    try_silent cargo "+${MSRV}" test --tests || exit 1 # only run --tests, which excludes the doctests from Readme.md
 ) || exit 1
 
 # minimum versions

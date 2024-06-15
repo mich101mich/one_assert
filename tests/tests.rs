@@ -15,76 +15,94 @@ macro_rules! assert_throws {
 fn test_assert() {
     assert_throws!(
         {
-            let a = 1;
-            let b = 2;
-            assert!(a == b);
+            let x = 1;
+            assert!(x == 2);
         },
-        "assertion failed: a == b",
+        "assertion failed: x == 2",
     );
 }
 
 #[test]
 fn test_assert_eq() {
-    assert_throws!(
-        {
-            let a = 1;
-            let b = 2;
-            assert_eq!(a, b);
-        },
-        "assertion `left == right` failed
+    if rustc_version::version().unwrap() < rustc_version::Version::new(1, 75, 0) {
+        assert_throws!(
+            {
+                let x = 1;
+                assert_eq!(x, 2);
+            },
+            "assertion failed: `(left == right)`
+  left: `1`,
+ right: `2`",
+        );
+    } else {
+        assert_throws!(
+            {
+                let x = 1;
+                assert_eq!(x, 2);
+            },
+            "assertion `left == right` failed
   left: 1
  right: 2",
-    );
+        );
+    }
 }
 
 #[test]
 fn test_assert_message() {
     assert_throws!(
         {
-            let a = 1;
-            let b = 2;
-            assert!(a == b, "a={} b={}", a, b);
+            let x = 1;
+            assert!(x == 2, "x={}", x);
         },
-        "a=1 b=2", // really? This doesn't even print the condition?
+        "x=1", // really? This doesn't even print the condition?
     );
 }
 
 #[test]
 fn test_assert_eq_message() {
-    assert_throws!(
-        {
-            let a = 1;
-            let b = 2;
-            assert_eq!(a, b, "a={} b={}", a, b);
-        },
-        "assertion `left == right` failed: a=1 b=2
+    if rustc_version::version().unwrap() < rustc_version::Version::new(1, 75, 0) {
+        assert_throws!(
+            {
+                let x = 1;
+                assert_eq!(x, 2, "x={}", x);
+            },
+            "assertion failed: `(left == right)`
+  left: `1`,
+ right: `2`: x=1",
+        );
+    } else {
+        assert_throws!(
+            {
+                let x = 1;
+                assert_eq!(x, 2, "x={}", x);
+            },
+            "assertion `left == right` failed: x=1
   left: 1
  right: 2",
-    );
+        );
+    }
 }
 
 #[test]
 fn test_one_assert() {
     assert_throws!(
         {
-            let a = 1;
-            let b = 2;
-            one_assert::assert!(a == b);
+            let x = 1;
+            one_assert::assert!(x == 2);
         },
-        "assertion `a == b` failed
- a: 1
- b: 2",
+        "assertion `x == 2` failed
+  left: 1
+ right: 2",
     );
 
     assert_throws!(
         {
-            let a = true;
-            let b = false;
-            one_assert::assert!(a && b);
+            let x = true;
+            one_assert::assert!(x && false);
         },
-        "assertion `a && b` failed
- a: true
- b: false",
+        "assertion `x && false` failed
+  left: true
+ right: false",
     );
 }
 

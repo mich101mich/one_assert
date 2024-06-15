@@ -53,8 +53,8 @@ let panic_message = std::panic::catch_unwind(|| {
 assert_eq!(
     *panic_message,
     "assertion `a == b` failed
- a: 1
- b: 2"
+  left: 1
+ right: 2"
 );
 ```
 And now we can expand this to as many operators as we want:
@@ -69,7 +69,7 @@ let panic_message = std::panic::catch_unwind(|| {
 assert_eq!(
     *panic_message,
     "assertion `a > b` failed
- a: 1
- b: 2"
+  left: 1
+ right: 2"
 );
 ```

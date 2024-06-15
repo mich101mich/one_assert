@@ -1,20 +1,20 @@
 error: 1 positional argument in format string, but no arguments were given
- --> tests/fail/malformed_parameters.rs:2:32
+ --> tests/fail/malformed_parameters.rs:2:34
   |
-2 |     one_assert::assert!(true, "{}");
-  |                                ^^
+2 |     one_assert::assert!(1 == 2, "{}");
+  |                                  ^^
 
 error: condition has to be followed by a comma, if a message is provided
- --> tests/fail/malformed_parameters.rs:3:30
+ --> tests/fail/malformed_parameters.rs:3:32
   |
-3 |     one_assert::assert!(true "{}");
-  |                              ^^^^
+3 |     one_assert::assert!(1 == 2 "{}");
+  |                                ^^^^
 
 error: expected expression, found `,`
- --> tests/fail/malformed_parameters.rs:4:31
+ --> tests/fail/malformed_parameters.rs:4:33
   |
-4 |     one_assert::assert!(true, , "{}");
-  |                               ^ expected expression
+4 |     one_assert::assert!(1 == 2, , "{}");
+  |                                 ^ expected expression
 
 error: argument never used
  --> tests/fail/malformed_parameters.rs:5:42

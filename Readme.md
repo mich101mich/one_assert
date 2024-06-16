@@ -41,7 +41,7 @@ assert_eq!(
 );
 ```
 As you can see, `assert_eq` is able to provide detailed info on what the individual values were.  
-But: That doesn't have to be the case. Rust has hygienic macros, so we can just **make `assert!(a == b)` work the same as `assert_eq!(a, b)`**:
+But: That doesn't have to be the case. Rust has hygienic and procedural macros, so we can just **make `assert!(a == b)` work the same as `assert_eq!(a, b)`**:
 ```rust
 let panic_message = std::panic::catch_unwind(|| {
 

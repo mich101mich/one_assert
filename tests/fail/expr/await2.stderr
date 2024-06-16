@@ -1,0 +1,8 @@
+error[E0728]: `await` is only allowed inside `async` functions and blocks
+ --> tests/fail/expr/await2.rs:3:29
+  |
+1 | fn main() {
+  | --------- this is not `async`
+2 |     let fut = async { true };
+3 |     one_assert::assert!(fut.await);
+  |                             ^^^^^ only allowed inside `async` functions and blocks

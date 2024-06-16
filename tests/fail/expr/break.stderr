@@ -1,0 +1,5 @@
+error: Expected a boolean expression, found a break statement
+ --> tests/fail/expr/break.rs:3:29
+  |
+3 |         one_assert::assert!(break);
+  |                             ^^^^^

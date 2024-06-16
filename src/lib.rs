@@ -2,8 +2,7 @@
 
 use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::{Span, TokenStream};
-use quote::{quote, quote_spanned, ToTokens};
-use syn::spanned::Spanned;
+use quote::{quote, ToTokens};
 
 mod error;
 mod utils;
@@ -70,15 +69,20 @@ fn assert_internal(input: Args) -> Result<TokenStream> {
     let Args { expr, format } = input;
 
     let mut expression = expr.to_token_stream(); // the expression to evaluate
-    let expr_str = expression.to_string().replace('{', "{{").replace('}', "}}"); // the expression as a string
+    let expr_str = printable_expr_string(&expr); // the expression as a string
 
     if expr_str == "true" {
         return Ok(assert_true_flavor());
+    } else if expr_str == "false" {
+        return Ok(quote! {
+            ::std::panic!("Surprisingly, `false` did not evaluate to true");
+        });
     }
 
     let mut message_parts = vec![quote! { "assertion `", #expr_str, "` failed" }]; // the static parts of the message
     let mut dynamic_args = vec![]; // the dynamic format arguments to the message
     let mut setup = TokenStream::new(); // setup code to evaluate before the expression
+    let mut ident_deduplicator = 0; // to avoid identical names on recursive calls to eval_expr
 
     if !format.is_empty() {
         message_parts.push(quote! { ": {}" });
@@ -91,16 +95,17 @@ fn assert_internal(input: Args) -> Result<TokenStream> {
         &mut expression,
         &mut message_parts,
         &mut dynamic_args,
+        &mut ident_deduplicator,
     )?;
 
-    let output = quote! {
+    let output = quote! {{
         #setup
         if #expression {
             // using an empty if instead of `!(#expression)` to avoid messing with the spans in `expression`
         } else {
             ::std::panic!(::std::concat!(#(#message_parts),*), #(#dynamic_args),*);
         }
-    };
+    }};
 
     Ok(output)
 }
@@ -111,6 +116,7 @@ fn eval_expr(
     expression: &mut TokenStream,
     message_parts: &mut Vec<TokenStream>,
     dynamic_args: &mut Vec<TokenStream>,
+    ident_deduplicator: &mut usize,
 ) -> Result<()> {
     match e {
         // [a, b, c, d]
@@ -135,19 +141,28 @@ fn eval_expr(
         syn::Expr::Binary(syn::ExprBinary {
             left, op, right, ..
         }) => {
-            let (lhs, rhs) = stretched_span(&left, &right);
+            let (lhs, rhs) = stretched_span(&left, &right, ident_deduplicator);
             setup.extend(quote! {
                 let #lhs = #left;
                 let #rhs = #right;
             });
             *expression = quote! { #lhs #op #rhs };
             message_parts.push(quote! { "\n  left: {:?}\n right: {:?}" });
-            dynamic_args.push(lhs);
-            dynamic_args.push(rhs);
+            dynamic_args.push(lhs.to_token_stream());
+            dynamic_args.push(rhs.to_token_stream());
         }
 
         // { ... }
-        syn::Expr::Block(_) => (), // might work if the last statement is a boolean
+        syn::Expr::Block(syn::ExprBlock { block, .. }) => {
+            return eval_block(
+                block,
+                setup,
+                expression,
+                message_parts,
+                dynamic_args,
+                ident_deduplicator,
+            )
+        }
 
         // break
         syn::Expr::Break(_) => {
@@ -160,28 +175,23 @@ fn eval_expr(
         syn::Expr::Call(_) => todo!("split args"),
 
         // expr as ty
-        syn::Expr::Cast(syn::ExprCast { expr, ty, .. }) => {
-            if ty.to_token_stream().to_string() == "bool" {
-                let span = expr.span();
-                let var = quote_spanned! {span => __assert_casted};
-                setup.extend(quote! {
-                    let #var = #expr;
-                });
-                *expression = quote! { #var as #ty };
-                message_parts.push(quote! { "\n input: {:?}" });
-                dynamic_args.push(var);
-                todo!("print pre-cast value")
-            } else {
-                let msg = "Expected a boolean expression, found a cast. Did you mean to use a comparison?";
-                return Error::err_spanned(ty, msg);
-            }
-        }
+        syn::Expr::Cast(_) => (), // let the compiler generate the error.
+        // Might work if expr is `true as bool`, which would actually be a workaround for the `assert!(true)` case
 
         // |args| { ... }
         syn::Expr::Closure(_) => (), // let the compiler generate the error
 
         // const { ... }
-        syn::Expr::Const(_) => (), // might work if the constant is a boolean
+        syn::Expr::Const(syn::ExprConst { block, .. }) => {
+            return eval_block(
+                block,
+                setup,
+                expression,
+                message_parts,
+                dynamic_args,
+                ident_deduplicator,
+            )
+        }
 
         // continue
         syn::Expr::Continue(_) => {
@@ -203,11 +213,24 @@ fn eval_expr(
 
         // group with invisible delimiters?
         syn::Expr::Group(syn::ExprGroup { expr, .. }) => {
-            return eval_expr(*expr, setup, expression, message_parts, dynamic_args);
+            return eval_expr(
+                *expr,
+                setup,
+                expression,
+                message_parts,
+                dynamic_args,
+                ident_deduplicator,
+            );
         }
 
         // if cond { ... } else { ... }
-        syn::Expr::If(_) => todo!("print condition"),
+        syn::Expr::If(_) => (), // might work if both branches return a boolean
+        // There is a better failure message that could be printed by checking the condition, printing
+        // its result (with left/right etc if false) and then using the eval_block to print the block,
+        // but that is hugely complicated considering that the else branch should not be touched in the
+        // true case and vice versa, and would basically require completely replacing the entire assert
+        // structure for an if that is possibly nested somewhere deep in other blocks. If a user wants
+        // fancy output from their if, they should just have separate asserts in the if and else blocks.
 
         // a[b]
         syn::Expr::Index(_) => todo!("print index"),
@@ -223,23 +246,10 @@ fn eval_expr(
         }
 
         // lit
-        syn::Expr::Lit(syn::ExprLit { lit, .. }) => {
-            if let syn::Lit::Bool(val) = lit {
-                // The sane behavior would be to give an error here, because `assert!(true)` is a no-op
-                // and `assert!(false)` is a panic. But that would be boring.
-                message_parts.clear();
-                dynamic_args.clear();
-                let msg = if val.value {
-                    return Ok(()); // should already be handled by the assert_true_flavor
-                } else {
-                    "Surprisingly, `false` did not evaluate to true"
-                };
-                message_parts.push(quote! { #msg });
-                *expression = quote! { false }; // yep, we're going to panic either way
-            } else {
-                // let the compiler generate the error
-            }
-        }
+        syn::Expr::Lit(_) => (), // might work if the literal is a boolean
+        // The base case for `assert!(true)` and `assert!(false)` was already caught in the initial
+        // setup. This is the case where a recursive call contained a play `true` or `false`, so we
+        // shall accept them without printing weird messages
 
         // loop { ... }
         syn::Expr::Loop(_) => (), // might work if the loop breaks with a boolean
@@ -255,7 +265,14 @@ fn eval_expr(
 
         // (expr)
         syn::Expr::Paren(syn::ExprParen { expr, .. }) => {
-            return eval_expr(*expr, setup, expression, message_parts, dynamic_args);
+            return eval_expr(
+                *expr,
+                setup,
+                expression,
+                message_parts,
+                dynamic_args,
+                ident_deduplicator,
+            );
         }
 
         // some::path::<of>::stuff
@@ -281,12 +298,66 @@ fn eval_expr(
     Ok(())
 }
 
-fn stretched_span(a: &impl ToTokens, b: &impl ToTokens) -> (TokenStream, TokenStream) {
-    let a_span = a.to_token_stream().into_iter().next().unwrap().span();
-    let a_var = quote_spanned! {a_span => __assert_lhs};
-    let b_span = b.to_token_stream().into_iter().last().unwrap().span();
-    let b_var = quote_spanned! {b_span => __assert_rhs};
-    (a_var, b_var)
+fn eval_block(
+    mut block: syn::Block,
+    setup: &mut TokenStream,
+    expression: &mut TokenStream,
+    message_parts: &mut Vec<TokenStream>,
+    dynamic_args: &mut Vec<TokenStream>,
+    ident_deduplicator: &mut usize,
+) -> std::result::Result<(), Error> {
+    let Some(last_stmt) = block.stmts.pop() else {
+        return Ok(()); // let the compiler generate the error
+    };
+    let syn::Stmt::Expr(expr, None) = last_stmt else {
+        return Ok(()); // let the compiler generate the error
+    };
+
+    let condition_string = printable_expr_string(&expr);
+    let message = format!(
+        "\n caused by: block return assertion `{}` failed",
+        condition_string
+    );
+    message_parts.push(quote! { #message });
+
+    for stmt in block.stmts {
+        setup.extend(stmt.to_token_stream());
+    }
+
+    eval_expr(
+        expr,
+        setup,
+        expression,
+        message_parts,
+        dynamic_args,
+        ident_deduplicator,
+    )
+}
+
+fn printable_expr_string(expr: &syn::Expr) -> String {
+    expr.to_token_stream()
+        .to_string()
+        .replace('{', "{{")
+        .replace('}', "}}")
+        .replace(" ;", ";") // workaround for syn? on older rust compilers? inserting a random space
+}
+
+fn make_ident(name: &str, span: Span, ident_deduplicator: &mut usize) -> syn::Ident {
+    let name = format!("__assert_{}_{}", name, *ident_deduplicator);
+    *ident_deduplicator += 1;
+    syn::Ident::new(&name, span)
+}
+
+fn stretched_span(
+    lhs: &impl ToTokens,
+    rhs: &impl ToTokens,
+    ident_deduplicator: &mut usize,
+) -> (syn::Ident, syn::Ident) {
+    let lhs_span = lhs.to_token_stream().into_iter().next().unwrap().span();
+    let lhs_var = make_ident("lhs", lhs_span, ident_deduplicator);
+    let rhs_span = rhs.to_token_stream().into_iter().last().unwrap().span();
+    let rhs_var = make_ident("rhs", rhs_span, ident_deduplicator);
+    (lhs_var, rhs_var)
 }
 
 fn assert_true_flavor() -> TokenStream {

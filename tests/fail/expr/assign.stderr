@@ -1,0 +1,5 @@
+error: Expected a boolean expression, found an assignment. Did you intend to compare with `==`?
+ --> tests/fail/expr/assign.rs:3:27
+  |
+3 |     one_assert::assert!(x = false);
+  |                           ^

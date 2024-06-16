@@ -1,0 +1,5 @@
+error: Expected a boolean expression, found a for loop
+ --> tests/fail/expr/forloop.rs:2:25
+  |
+2 |     one_assert::assert!(for _ in 0..10 {});
+  |                         ^^^^^^^^^^^^^^^^^

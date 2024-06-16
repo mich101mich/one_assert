@@ -1,0 +1,5 @@
+error: Expected a boolean expression, found an async block. Did you intend to await a future?
+ --> tests/fail/expr/async.rs:2:25
+  |
+2 |     one_assert::assert!(async { false });
+  |                         ^^^^^^^^^^^^^^^

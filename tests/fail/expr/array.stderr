@@ -1,0 +1,5 @@
+error[E0308]: mismatched types
+ --> tests/fail/expr/array.rs:2:25
+  |
+2 |     one_assert::assert!([false]);
+  |                         ^^^^^^^ expected `bool`, found `[bool; 1]`

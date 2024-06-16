@@ -1,0 +1,5 @@
+error: Expected a boolean expression, found a continue statement
+ --> tests/fail/expr/continue.rs:3:29
+  |
+3 |         one_assert::assert!(continue);
+  |                             ^^^^^^^^

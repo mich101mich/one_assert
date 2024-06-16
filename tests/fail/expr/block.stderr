@@ -1,0 +1,25 @@
+error[E0308]: mismatched types
+ --> tests/fail/expr/block.rs:4:9
+  |
+4 |         x + 1
+  |         ^^^^^ expected `bool`, found integer
+
+error[E0308]: mismatched types
+ --> tests/fail/expr/block.rs:6:25
+  |
+6 |       one_assert::assert!({
+  |  _________________________^
+7 | |         let x = 5;
+8 | |         x == 5;
+  | |               - help: remove this semicolon to return this value
+9 | |     });
+  | |_____^ expected `bool`, found `()`
+
+error[E0308]: mismatched types
+  --> tests/fail/expr/block.rs:10:25
+   |
+10 |       one_assert::assert!({
+   |  _________________________^
+11 | |         let x = 5;
+12 | |     });
+   | |_____^ expected `bool`, found `()`

@@ -110,7 +110,7 @@ fn test_one_assert() {
 #[ignore]
 fn error_message_tests() {
     let root = std::path::PathBuf::from("tests/fail");
-    let mut paths = vec![root.clone()];
+    let mut paths = vec![root.clone(), root.join("expr")];
 
     // Error Messages are different in nightly => Different .stderr files
     let nightly = rustc_version::version_meta().unwrap().channel == rustc_version::Channel::Nightly;

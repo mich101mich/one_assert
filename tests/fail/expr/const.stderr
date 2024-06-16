@@ -1,0 +1,16 @@
+error[E0308]: mismatched types
+ --> tests/fail/expr/const.rs:2:33
+  |
+2 |     one_assert::assert!(const { 3 });
+  |                                 ^ expected `bool`, found integer
+
+error[E0308]: mismatched types
+ --> tests/fail/expr/const.rs:4:15
+  |
+4 |           const {
+  |  _______________^
+5 | |             let x = 1;
+6 | |             x == 1;
+  | |                   - help: remove this semicolon to return this value
+7 | |         }
+  | |_________^ expected `bool`, found `()`

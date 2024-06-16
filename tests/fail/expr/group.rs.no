@@ -1,0 +1,3 @@
+fn main() {
+    one_assert::assert!(<group>); // how do you create an invisible group??
+}

@@ -1,0 +1,16 @@
+error[E0308]: mismatched types
+ --> tests/fail/expr/cast.rs:3:25
+  |
+3 |     one_assert::assert!(1 as i32);
+  |                         ^^^^^^^^ expected `bool`, found `i32`
+
+error[E0054]: cannot cast `{integer}` as `bool`
+ --> tests/fail/expr/cast.rs:2:25
+  |
+2 |     one_assert::assert!(1 as bool);
+  |                         ^^^^^^^^^
+  |
+help: compare with zero instead
+  |
+2 |     one_assert::assert!(1 != 0);
+  |                           ~~~~

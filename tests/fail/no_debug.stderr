@@ -1,0 +1,29 @@
+error[E0277]: `NoDebugImpl` doesn't implement `Debug`
+ --> tests/fail/no_debug.rs:6:25
+  |
+6 |     one_assert::assert!(x == NoDebugImpl(2));
+  |                         ^ `NoDebugImpl` cannot be formatted using `{:?}`
+  |
+  = help: the trait `Debug` is not implemented for `NoDebugImpl`
+  = note: add `#[derive(Debug)]` to `NoDebugImpl` or manually `impl Debug for NoDebugImpl`
+  = note: this error originates in the macro `$crate::__export::format_args` which comes from the expansion of the macro `one_assert::assert` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `NoDebugImpl` with `#[derive(Debug)]`
+  |
+3 +     #[derive(Debug)]
+4 |     struct NoDebugImpl(i32);
+  |
+
+error[E0277]: `NoDebugImpl` doesn't implement `Debug`
+ --> tests/fail/no_debug.rs:6:30
+  |
+6 |     one_assert::assert!(x == NoDebugImpl(2));
+  |                              ^^^^^^^^^^^^^^ `NoDebugImpl` cannot be formatted using `{:?}`
+  |
+  = help: the trait `Debug` is not implemented for `NoDebugImpl`
+  = note: add `#[derive(Debug)]` to `NoDebugImpl` or manually `impl Debug for NoDebugImpl`
+  = note: this error originates in the macro `$crate::__export::format_args` which comes from the expansion of the macro `one_assert::assert` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `NoDebugImpl` with `#[derive(Debug)]`
+  |
+3 +     #[derive(Debug)]
+4 |     struct NoDebugImpl(i32);
+  |

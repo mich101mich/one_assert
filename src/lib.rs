@@ -1,4 +1,86 @@
-#![doc = include_str!("../Readme.md")]
+//! # One Assert
+//!
+//! ### Introduction
+//!
+//! Rust's standard library provides the [`assert`](https://doc.rust-lang.org/std/macro.assert.html),
+//! [`assert_eq`](https://doc.rust-lang.org/std/macro.assert_eq.html) and [`assert_ne`](https://doc.rust-lang.org/std/macro.assert_ne.html).
+//! There are however some inconveniences with these, like how there are no specialization for other inequalities, like
+//! `assert_ge` for `>=` etc, or how the names only differ in one or two letters (`assert_eq`, `assert_ne`,
+//! `assert_ge`, `assert_gt`, ...) and are thus easy to mix up at a glance.
+//!
+//! The main reason for not adding more macros is that they can be represented just fine with `assert!(a >= b)`,
+//! so there is no need for a separate macro for every use case.
+//!
+//! But that begs the question: Why do we have `assert_eq` and `assert_ne` in the first place?
+//!
+//! The practical reason: `assert_eq!(a, b)` provides better output than `assert!(a == b)`:
+//! ```
+//! # macro_rules! catch_panic {
+//! #     ($block: block) => {{
+//! #         let error = std::panic::catch_unwind(move || $block).unwrap_err();
+//! #         error
+//! #             .downcast_ref::<&'static str>()
+//! #             .map(|s| s.to_string())
+//! #             .unwrap_or_else(|| *error.downcast::<String>().unwrap())
+//! #     }};
+//! # }
+//! let x = 1;
+//! let msg = catch_panic!({ assert!(x == 2); });
+//! assert_eq!(msg, "assertion failed: x == 2");
+//!
+//! let msg = catch_panic!({ assert_eq!(x, 2); });
+//! assert_eq!(msg, "assertion `left == right` failed
+//!   left: 1
+//!  right: 2"
+//! );
+//! ```
+//! As you can see, `assert_eq` is able to provide detailed info on what the individual values were.  
+//! But: That doesn't have to be the case. Rust has hygienic and procedural macros, so we can just **make `assert!(a == b)` work the same as `assert_eq!(a, b)`**:
+//! ```
+//! # macro_rules! catch_panic {
+//! #     ($block: block) => {{
+//! #         let error = std::panic::catch_unwind(move || $block).unwrap_err();
+//! #         error
+//! #             .downcast_ref::<&'static str>()
+//! #             .map(|s| s.to_string())
+//! #             .unwrap_or_else(|| *error.downcast::<String>().unwrap())
+//! #     }};
+//! # }
+//! let x = 1;
+//! let msg = catch_panic!({ one_assert::assert!(x == 2); });
+//! assert_eq!(msg, "assertion `x == 2` failed
+//!   left: 1
+//!  right: 2"
+//! );
+//! ```
+//! And now we can expand this to as many operators as we want:
+//! ```
+//! # macro_rules! catch_panic {
+//! #     ($block: block) => {{
+//! #         let error = std::panic::catch_unwind(move || $block).unwrap_err();
+//! #         error
+//! #             .downcast_ref::<&'static str>()
+//! #             .map(|s| s.to_string())
+//! #             .unwrap_or_else(|| *error.downcast::<String>().unwrap())
+//! #     }};
+//! # }
+//! let x = 1;
+//! let msg = catch_panic!({ one_assert::assert!(x > 2); });
+//! assert_eq!(msg, "assertion `x > 2` failed
+//!   left: 1
+//!  right: 2"
+//! );
+//! ```
+//!
+//! ### Features
+//!
+//! - copy AddsToBool example
+//!
+//! ### Limitations
+//! - everything has to be debug
+//! - everything has to be debug-printed REGARDLESS of assertion success or failure
+//!   - reason: Actual expression might move the values, so we can't just store them and print them later
+//!   - result: Don't use this in performance critical code
 
 use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::{Span, TokenStream};
@@ -65,6 +147,16 @@ pub fn assert(input: TokenStream1) -> TokenStream1 {
     }
 }
 
+/// Ensure that there is no conflict between identifiers in the generated code by adding an incrementing number to each identifier
+struct UniqueIdentCreator(usize);
+impl UniqueIdentCreator {
+    fn create(&mut self, name: &str) -> syn::Ident {
+        let name = format!("__one_assert_{}_{}", name, self.0);
+        self.0 += 1;
+        syn::Ident::new(&name, Span::call_site())
+    }
+}
+
 fn assert_internal(input: Args) -> Result<TokenStream> {
     let Args { expr, format } = input;
 
@@ -79,13 +171,13 @@ fn assert_internal(input: Args) -> Result<TokenStream> {
         });
     }
 
-    let mut message_parts = vec![quote! { "assertion `", #expr_str, "` failed" }]; // the static parts of the message
+    let mut format_message = format!("assertion `{expr_str}` failed"); // the static parts of the message
     let mut dynamic_args = vec![]; // the dynamic format arguments to the message
     let mut setup = TokenStream::new(); // setup code to evaluate before the expression
-    let mut ident_deduplicator = 0; // to avoid identical names on recursive calls to eval_expr
+    let mut ident_id = UniqueIdentCreator(0); // to avoid identical names on recursive calls to eval_expr
 
     if !format.is_empty() {
-        message_parts.push(quote! { ": {}" });
+        format_message += ": {}";
         dynamic_args.push(quote! { ::std::format_args!(#format) });
     }
 
@@ -93,19 +185,27 @@ fn assert_internal(input: Args) -> Result<TokenStream> {
         expr,
         &mut setup,
         &mut expression,
-        &mut message_parts,
+        &mut format_message,
         &mut dynamic_args,
-        &mut ident_deduplicator,
+        &mut ident_id,
     )?;
 
-    let output = quote! {{
-        #setup
-        if #expression {
-            // using an empty if instead of `!(#expression)` to avoid messing with the spans in `expression`
-        } else {
-            ::std::panic!(::std::concat!(#(#message_parts),*), #(#dynamic_args),*);
+    let output = quote! {
+        #[allow(unused)]
+        {
+            /// A wrapper type to create multi-token variables for span manipulation
+            struct __OneAssertWrapper<T>(T);
+
+            #setup
+            if #expression {
+                // using an empty if instead of `!(#expression)` to avoid messing with the spans in `expression`.
+                // And to produce a better error: "expected bool, found <type>" instead of
+                // "no unary operator '!' implemented for <type>"
+            } else {
+                ::std::panic!(#format_message, #(#dynamic_args),*);
+            }
         }
-    }};
+    };
 
     Ok(output)
 }
@@ -114,9 +214,9 @@ fn eval_expr(
     e: syn::Expr,
     setup: &mut TokenStream,
     expression: &mut TokenStream,
-    message_parts: &mut Vec<TokenStream>,
+    format_message: &mut String,
     dynamic_args: &mut Vec<TokenStream>,
-    ident_deduplicator: &mut usize,
+    ident_id: &mut UniqueIdentCreator,
 ) -> Result<()> {
     match e {
         // [a, b, c, d]
@@ -137,19 +237,16 @@ fn eval_expr(
         // future.await
         syn::Expr::Await(_) => (), // might work if the future resolves to a boolean and the assert is in an async context
 
-        // left op right
+        // left <op> right
         syn::Expr::Binary(syn::ExprBinary {
             left, op, right, ..
         }) => {
-            let (lhs, rhs) = stretched_span(&left, &right, ident_deduplicator);
-            setup.extend(quote! {
-                let #lhs = #left;
-                let #rhs = #right;
-            });
+            let (lhs, lhs_str) = var_from_expr(*left, "lhs", setup, ident_id);
+            let (rhs, rhs_str) = var_from_expr(*right, "rhs", setup, ident_id);
             *expression = quote! { #lhs #op #rhs };
-            message_parts.push(quote! { "\n  left: {:?}\n right: {:?}" });
-            dynamic_args.push(lhs.to_token_stream());
-            dynamic_args.push(rhs.to_token_stream());
+            *format_message += "\n  left: {}\n right: {}";
+            dynamic_args.push(lhs_str);
+            dynamic_args.push(rhs_str);
         }
 
         // { ... }
@@ -158,9 +255,9 @@ fn eval_expr(
                 block,
                 setup,
                 expression,
-                message_parts,
+                format_message,
                 dynamic_args,
-                ident_deduplicator,
+                ident_id,
             )
         }
 
@@ -172,7 +269,20 @@ fn eval_expr(
         }
 
         // function(args...)
-        syn::Expr::Call(_) => todo!("split args"),
+        syn::Expr::Call(syn::ExprCall { args, func, .. }) => {
+            if args.is_empty() {
+                return Ok(());
+            }
+            let index_len = (args.len() - 1).to_string().len();
+            let mut out_args = vec![];
+            for (i, arg) in args.into_iter().enumerate() {
+                *format_message += &format!("\n arg {i:>index_len$}: {{}}");
+                let (arg, arg_str) = var_from_expr(arg, &format!("arg{}", i), setup, ident_id);
+                dynamic_args.push(arg_str);
+                out_args.push(arg);
+            }
+            *expression = quote! { #func(#(#out_args),*) };
+        }
 
         // expr as ty
         syn::Expr::Cast(_) => (), // let the compiler generate the error.
@@ -187,9 +297,9 @@ fn eval_expr(
                 block,
                 setup,
                 expression,
-                message_parts,
+                format_message,
                 dynamic_args,
-                ident_deduplicator,
+                ident_id,
             )
         }
 
@@ -217,9 +327,9 @@ fn eval_expr(
                 *expr,
                 setup,
                 expression,
-                message_parts,
+                format_message,
                 dynamic_args,
-                ident_deduplicator,
+                ident_id,
             );
         }
 
@@ -232,8 +342,17 @@ fn eval_expr(
         // structure for an if that is possibly nested somewhere deep in other blocks. If a user wants
         // fancy output from their if, they should just have separate asserts in the if and else blocks.
 
-        // a[b]
-        syn::Expr::Index(_) => todo!("print index"),
+        // obj[index]
+        syn::Expr::Index(syn::ExprIndex { index, expr, .. }) => {
+            // TODO: print the object
+            if matches!(*index, syn::Expr::Lit(_)) {
+                return Ok(()); // no reason to print a literal
+            }
+            let (index, index_str) = var_from_expr(*index, "index", setup, ident_id);
+            *expression = quote! { #expr[#index] };
+            *format_message += "\n index: {}";
+            dynamic_args.push(index_str);
+        }
 
         // _
         syn::Expr::Infer(_) => (), // let the compiler generate the error
@@ -248,7 +367,7 @@ fn eval_expr(
         // lit
         syn::Expr::Lit(_) => (), // might work if the literal is a boolean
         // The base case for `assert!(true)` and `assert!(false)` was already caught in the initial
-        // setup. This is the case where a recursive call contained a play `true` or `false`, so we
+        // setup. This is the case where a recursive call contained a plain `true` or `false`, so we
         // shall accept them without printing weird messages
 
         // loop { ... }
@@ -269,9 +388,9 @@ fn eval_expr(
                 *expr,
                 setup,
                 expression,
-                message_parts,
+                format_message,
                 dynamic_args,
-                ident_deduplicator,
+                ident_id,
             );
         }
 
@@ -302,9 +421,9 @@ fn eval_block(
     mut block: syn::Block,
     setup: &mut TokenStream,
     expression: &mut TokenStream,
-    message_parts: &mut Vec<TokenStream>,
+    format_message: &mut String,
     dynamic_args: &mut Vec<TokenStream>,
-    ident_deduplicator: &mut usize,
+    ident_id: &mut UniqueIdentCreator,
 ) -> std::result::Result<(), Error> {
     let Some(last_stmt) = block.stmts.pop() else {
         return Ok(()); // let the compiler generate the error
@@ -314,11 +433,10 @@ fn eval_block(
     };
 
     let condition_string = printable_expr_string(&expr);
-    let message = format!(
+    *format_message += &format!(
         "\n caused by: block return assertion `{}` failed",
         condition_string
     );
-    message_parts.push(quote! { #message });
 
     for stmt in block.stmts {
         setup.extend(stmt.to_token_stream());
@@ -328,36 +446,109 @@ fn eval_block(
         expr,
         setup,
         expression,
-        message_parts,
+        format_message,
         dynamic_args,
-        ident_deduplicator,
+        ident_id,
     )
 }
 
 fn printable_expr_string(expr: &syn::Expr) -> String {
-    expr.to_token_stream()
-        .to_string()
-        .replace('{', "{{")
-        .replace('}', "}}")
-        .replace(" ;", ";") // workaround for syn? on older rust compilers? inserting a random space
+    let s = expr.to_token_stream().to_string();
+    let mut iter = s.chars().peekable();
+    let mut result = String::with_capacity(s.len() * 11 / 10);
+    // the following code is just a series of replacements in a string, but I don't like that
+    // String::replace creates a new string for every replacement, so I'm doing a manual
+    // multi-replacement here
+    while let Some(c) = iter.next() {
+        match c {
+            '{' => result.push_str("{{"), // would otherwise be interpreted as a placeholder
+            '}' => result.push_str("}}"),
+            ' ' => {
+                if let Some(next) = iter.next_if(|c| matches!(c, ';' | '[')) {
+                    // character that syn padded with a space where normal code wouldn't
+                    result.push(next);
+                } else {
+                    result.push(' ');
+                }
+            }
+            _ => result.push(c),
+        }
+    }
+    result
 }
 
-fn make_ident(name: &str, span: Span, ident_deduplicator: &mut usize) -> syn::Ident {
-    let name = format!("__assert_{}_{}", name, *ident_deduplicator);
-    *ident_deduplicator += 1;
-    syn::Ident::new(&name, span)
-}
+fn var_from_expr(
+    expr: syn::Expr,
+    name: &str,
+    setup: &mut TokenStream,
+    ident_id: &mut UniqueIdentCreator,
+) -> (TokenStream, TokenStream) {
+    let var_ident = ident_id.create(name);
+    let var_str_ident = ident_id.create(&format!("{}_str", name));
 
-fn stretched_span(
-    lhs: &impl ToTokens,
-    rhs: &impl ToTokens,
-    ident_deduplicator: &mut usize,
-) -> (syn::Ident, syn::Ident) {
-    let lhs_span = lhs.to_token_stream().into_iter().next().unwrap().span();
-    let lhs_var = make_ident("lhs", lhs_span, ident_deduplicator);
-    let rhs_span = rhs.to_token_stream().into_iter().last().unwrap().span();
-    let rhs_var = make_ident("rhs", rhs_span, ident_deduplicator);
-    (lhs_var, rhs_var)
+    let expr_span = utils::FullSpan::from_spanned(&expr);
+    let var_access = expr_span.apply(quote! { #var_ident }, quote! { .0 });
+
+    setup.extend(quote! {
+        let #var_ident = __OneAssertWrapper(#expr);
+        let #var_str_ident = ::std::format!("{:?}", #var_access);
+    });
+    (var_access, var_str_ident.to_token_stream())
+
+    // # Span manipulation workaround:
+    // Spans cannot be manipulated on stable rust right now (see <https://github.com/rust-lang/rust/issues/54725>).
+    // This also applies to getting the full span of an expression, which requires joining the spans of the individual
+    // tokens. On stable, .span() will just return the first token, meaning that if you have an expression like
+    // `1 + 2` and a compiler error should be printed on the entire expression, it will instead only underline
+    // the first token, the `1` in this case.
+    // To work around this, the common approach (see syn::Error::new_spanned) is to bind the first and last token
+    // of your code to the first and last individual span of the input, so that when the rust compiler wants to
+    // underline the "entire" span, it will join the spans for us and underline the entire expression.
+    // This requires that the code that should be underlined has more than one token, so that more than one span
+    // can be bound to it. This function should create variable names, which are only one token long, so we need
+    // to artificially create a multi-token variable. This is the point of the __OneAssertWrapper struct. It simply
+    // contains the value of the variable, and any access will be written as `var.0` instead of `var`, giving us
+    // the multi-token variable we need.
+    //
+    // ## Simplified but full example
+    //
+    // ### Without the span manipulation
+    // Input: `assert!(1 + 2);`
+    //
+    // Output:
+    // ```
+    // let var = 1 + 2;
+    // if var {} else { panic!("assertion failed"); }
+    // ```
+    //
+    // This code would produce a compiler error like this:
+    // ```
+    // error: mismatched types
+    //  1 | assert!(1 + 2);
+    //              ^ expected bool, found {integer}
+    // ```
+    // which is not very helpful, because the error message only points at the first token of the expression.
+    //
+    // ### With the span manipulation
+    // Input: `assert!(1 + 2);`
+    //
+    // Output:
+    // ```
+    // let var = __OneAssertWrapper(1 + 2);
+    // if var.0 {} else { panic!("assertion failed"); }
+    // ```
+    // Note that the token-span assignment of the usage of `var.0` is as follows:
+    // - `var` is assigned the span of the `1` from the input
+    // - `.0` is assigned the span of the `2` from the input
+    //
+    // Produced error:
+    // ```
+    // error: mismatched types
+    //  1 | assert!(1 + 2);
+    //              ^^^^^ expected bool, found {integer}
+    // ```
+    // As you can see, the compiler wants to underline the full `var.0`, meaning it will end up underlining
+    // everything between the original `1` and `2` tokens, which is exactly what we want.
 }
 
 fn assert_true_flavor() -> TokenStream {

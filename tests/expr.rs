@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! assert_throws {
     ( $block:block, $message:literal $(,)? ) => {
-        let error = std::panic::catch_unwind(|| $block).unwrap_err();
+        let error = std::panic::catch_unwind(move || $block).unwrap_err();
         if let Some(s) = error.downcast_ref::<&'static str>() {
             assert_eq!(*s, $message);
         } else if let Some(s) = error.downcast_ref::<String>() {
@@ -78,7 +78,47 @@ fn test_block() {
 // fn test_break() {}
 
 #[test]
-fn test_call() {} // TODO: Implement
+fn test_call() {
+    fn dummy_fn(a0: bool, a1: u8, a2: &str) -> bool {
+        a0 && a1 == 1 && a2 == "hello"
+    }
+
+    let a = true;
+    let b = 1;
+    let c = "hello";
+
+    one_assert::assert!(dummy_fn(a, b, c));
+
+    let c = "world";
+    assert_throws!(
+        one_assert::assert!(dummy_fn(a, b, c)),
+        "assertion `dummy_fn(a, b, c)` failed
+ arg 0: true
+ arg 1: 1
+ arg 2: \"world\""
+    );
+
+    fn ten_arg_fn(a0: u8, a1: u8, _: u8, _: u8, _: u8, _: u8, _: u8, _: u8, _: u8, _: u8) -> bool {
+        a0 == a1
+    }
+
+    let a = 1;
+    let b = 2;
+    assert_throws!(
+        one_assert::assert!(ten_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0)),
+        "assertion `ten_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0)` failed\n arg 0: 1\n arg 1: 2\n arg 2: 0\n arg 3: 0\n arg 4: 0\n arg 5: 0\n arg 6: 0\n arg 7: 0\n arg 8: 0\n arg 9: 0"
+    );
+
+    #[rustfmt::skip]
+    fn eleven_arg_fn(a0: u8, a1: u8, _: u8, _: u8, _: u8, _: u8, _: u8, _: u8, _: u8, _: u8, _: u8) -> bool {
+        a0 == a1
+    }
+
+    assert_throws!(
+        one_assert::assert!(eleven_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0, 0)),
+        "assertion `eleven_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0, 0)` failed\n arg  0: 1\n arg  1: 2\n arg  2: 0\n arg  3: 0\n arg  4: 0\n arg  5: 0\n arg  6: 0\n arg  7: 0\n arg  8: 0\n arg  9: 0\n arg 10: 0"
+    );
+}
 
 #[test]
 fn test_cast() {
@@ -154,7 +194,20 @@ fn test_if() {
 }
 
 #[test]
-fn test_index() {}
+fn test_index() {
+    let arr = [true, false, false];
+    let idx = 0;
+    one_assert::assert!(arr[idx]);
+
+    let idx = 1;
+    assert_throws!(
+        one_assert::assert!(arr[idx]),
+        "assertion `arr[idx]` failed
+ index: 1"
+    );
+
+    assert_throws!(one_assert::assert!(arr[2]), "assertion `arr[2]` failed");
+}
 
 #[test]
 fn test_infer() {}

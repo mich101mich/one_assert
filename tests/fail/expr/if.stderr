@@ -1,0 +1,35 @@
+error: condition has to be followed by a comma, if a message is provided
+ --> tests/fail/expr/if.rs:4:52
+  |
+4 |     one_assert::assert!(if x == 1 { 1 } else { 2 } else { 3 });
+  |                                                    ^^^^
+
+error[E0308]: mismatched types
+ --> tests/fail/expr/if.rs:3:37
+  |
+3 |     one_assert::assert!(if x == 1 { 1 } else { 2 });
+  |                                     ^ expected `bool`, found integer
+
+error[E0308]: mismatched types
+ --> tests/fail/expr/if.rs:3:48
+  |
+3 |     one_assert::assert!(if x == 1 { 1 } else { 2 });
+  |                                                ^ expected `bool`, found integer
+
+error[E0317]: `if` may be missing an `else` clause
+ --> tests/fail/expr/if.rs:5:25
+  |
+5 |     one_assert::assert!(if x == 1 { true });
+  |                         ^^^^^^^^^^^^----^^
+  |                         |           |
+  |                         |           found here
+  |                         expected `bool`, found `()`
+  |
+  = note: `if` expressions without `else` evaluate to `()`
+  = help: consider adding an `else` block that evaluates to the expected type
+
+error[E0308]: mismatched types
+ --> tests/fail/expr/if.rs:6:51
+  |
+6 |     one_assert::assert!(if x == 1 { true } else { 1 });
+  |                                                   ^ expected `bool`, found integer

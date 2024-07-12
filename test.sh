@@ -12,23 +12,25 @@ TMP_FILE="/tmp/one_assert_test_out.txt"
 
 function handle_output {
     rm -f "${TMP_FILE}"
-    while read -r line
+    while IFS='' read -r line
     do
         echo "${line}" >> "${TMP_FILE}"
 
         # make sure line is not longer than the terminal width
         WIDTH=$(tput cols) # read this again in case the terminal was resized
         WIDTH=$((WIDTH - 3)) # leave space for the "..."
-        TRIMMED_LINE=$(echo "> ${line}" | sed "s/\(.\{${WIDTH}\}\).*/\1.../")
-        echo -en "\033[2K\r${TRIMMED_LINE}"
-        tput init # trimmed line may have messed up coloring
+        TRIMMED_LINE=$(echo "> ${line}" | sed -r -e "s/^(.{${WIDTH}}).*/\1.../")
+
+        echo -en "\033[2K\r"
+        echo -n "${TRIMMED_LINE}"
+        # tput init # trimmed line may have messed up coloring
     done
     echo -ne "\033[2K\r";
 }
 
 function try_silent {
     echo "Running $*"
-    unbuffer "$@" | handle_output
+    unbuffer "$@" 2>&1 | handle_output
     if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
         cat "${TMP_FILE}"
         return 1

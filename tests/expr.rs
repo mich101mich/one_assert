@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! assert_throws {
-    ( $block:block, $message:literal $(,)? ) => {
-        let error = std::panic::catch_unwind(move || $block).unwrap_err();
+    ( $block:block, $message:expr $(,)? ) => {
+        let error = std::panic::catch_unwind(|| $block).unwrap_err();
         if let Some(s) = error.downcast_ref::<&'static str>() {
             assert_eq!(*s, $message);
         } else if let Some(s) = error.downcast_ref::<String>() {
@@ -10,7 +10,7 @@ macro_rules! assert_throws {
             panic!("unexpected panic payload: {:?}", error);
         }
     };
-    ( $statement:stmt, $message:literal $(,)? ) => {
+    ( $statement:expr, $message:expr $(,)? ) => {
         assert_throws!({ $statement }, $message);
     };
 }
@@ -53,7 +53,127 @@ fn test_await() {
 }
 
 #[test]
-fn test_binary() {} // TODO: Implement
+fn test_binary() {
+    let a = 1;
+
+    one_assert::assert!(a == 1);
+    assert_throws!(
+        one_assert::assert!(a == 2),
+        "assertion `a == 2` failed
+     left: 1
+    right: 2"
+    );
+
+    one_assert::assert!(a != 2);
+    assert_throws!(
+        one_assert::assert!(a != 1),
+        "assertion `a != 1` failed
+     left: 1
+    right: 1"
+    );
+
+    one_assert::assert!(a < 2);
+    assert_throws!(
+        one_assert::assert!(a < 1),
+        "assertion `a < 1` failed
+     left: 1
+    right: 1"
+    );
+
+    one_assert::assert!(a <= 1);
+    assert_throws!(
+        one_assert::assert!(a <= 0),
+        "assertion `a <= 0` failed
+     left: 1
+    right: 0"
+    );
+
+    one_assert::assert!(a > 0);
+    assert_throws!(
+        one_assert::assert!(a > 1),
+        "assertion `a > 1` failed
+     left: 1
+    right: 1"
+    );
+
+    one_assert::assert!(a >= 1);
+    assert_throws!(
+        one_assert::assert!(a >= 2),
+        "assertion `a >= 2` failed
+     left: 1
+    right: 2"
+    );
+
+    let b = true;
+    one_assert::assert!(b && true);
+    assert_throws!(
+        one_assert::assert!(b && false),
+        "assertion `b && false` failed
+     left: true
+    right: false"
+    );
+
+    one_assert::assert!(b & true);
+    assert_throws!(
+        one_assert::assert!(b & false),
+        "assertion `b & false` failed
+     left: true
+    right: false"
+    );
+
+    let b = false;
+    one_assert::assert!(b || true);
+    assert_throws!(
+        one_assert::assert!(b || false),
+        "assertion `b || false` failed
+     left: false
+    right: false"
+    );
+
+    one_assert::assert!(b | true);
+    assert_throws!(
+        one_assert::assert!(b | false),
+        "assertion `b | false` failed
+     left: false
+    right: false"
+    );
+
+    macro_rules! test_op_to_bool {
+        ($op:tt, $op_name:ident, $op_fn_name:ident) => {{
+            #[derive(Debug)]
+            struct OpToBool(i32);
+            impl std::ops::$op_name for OpToBool {
+                type Output = bool;
+                fn $op_fn_name(self, rhs: Self) -> bool {
+                    self.0 == rhs.0
+                }
+            }
+
+            let a = OpToBool(1);
+            one_assert::assert!(a $op OpToBool(1));
+
+            let a = OpToBool(1);
+            assert_throws!(
+                one_assert::assert!(a $op OpToBool(2)),
+                concat!(
+                    "assertion `a ", stringify!($op), " OpToBool(2)` failed
+     left: OpToBool(1)
+    right: OpToBool(2)"
+                )
+            );
+        }};
+    }
+    test_op_to_bool!(+, Add, add);
+    test_op_to_bool!(-, Sub, sub);
+    test_op_to_bool!(*, Mul, mul);
+    test_op_to_bool!(/, Div, div);
+    test_op_to_bool!(%, Rem, rem);
+    test_op_to_bool!(&, BitAnd, bitand);
+    test_op_to_bool!(|, BitOr, bitor);
+    test_op_to_bool!(^, BitXor, bitxor);
+    test_op_to_bool!(<<, Shl, shl);
+    test_op_to_bool!(>>, Shr, shr);
+}
 
 #[test]
 fn test_block() {
@@ -62,16 +182,29 @@ fn test_block() {
         a == 1
     });
 
-    assert_throws!(
-        one_assert::assert!({
-            let a = 1;
-            a == 2
-        }),
-        "assertion `{ let a = 1; a == 2 }` failed
- caused by: block return assertion `a == 2` failed
-  left: 1
- right: 2"
-    );
+    if rustc_version::version().unwrap() < rustc_version::Version::new(1, 75, 0) {
+        assert_throws!(
+            one_assert::assert!({
+                let a = 1;
+                a == 2
+            }),
+            "assertion `{ let a = 1 ; a == 2 }` failed
+  caused by: block return assertion `a == 2` failed
+     left: 1
+    right: 2"
+        );
+    } else {
+        assert_throws!(
+            one_assert::assert!({
+                let a = 1;
+                a == 2
+            }),
+            "assertion `{ let a = 1; a == 2 }` failed
+  caused by: block return assertion `a == 2` failed
+     left: 1
+    right: 2"
+        );
+    }
 }
 
 // #[test]
@@ -93,9 +226,9 @@ fn test_call() {
     assert_throws!(
         one_assert::assert!(dummy_fn(a, b, c)),
         "assertion `dummy_fn(a, b, c)` failed
- arg 0: true
- arg 1: 1
- arg 2: \"world\""
+    arg0: true
+    arg1: 1
+    arg2: \"world\""
     );
 
     fn ten_arg_fn(a0: u8, a1: u8, _: u8, _: u8, _: u8, _: u8, _: u8, _: u8, _: u8, _: u8) -> bool {
@@ -106,7 +239,7 @@ fn test_call() {
     let b = 2;
     assert_throws!(
         one_assert::assert!(ten_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0)),
-        "assertion `ten_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0)` failed\n arg 0: 1\n arg 1: 2\n arg 2: 0\n arg 3: 0\n arg 4: 0\n arg 5: 0\n arg 6: 0\n arg 7: 0\n arg 8: 0\n arg 9: 0"
+        "assertion `ten_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0)` failed\n    arg0: 1\n    arg1: 2\n    arg2: 0\n    arg3: 0\n    arg4: 0\n    arg5: 0\n    arg6: 0\n    arg7: 0\n    arg8: 0\n    arg9: 0"
     );
 
     #[rustfmt::skip]
@@ -116,7 +249,7 @@ fn test_call() {
 
     assert_throws!(
         one_assert::assert!(eleven_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0, 0)),
-        "assertion `eleven_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0, 0)` failed\n arg  0: 1\n arg  1: 2\n arg  2: 0\n arg  3: 0\n arg  4: 0\n arg  5: 0\n arg  6: 0\n arg  7: 0\n arg  8: 0\n arg  9: 0\n arg 10: 0"
+        "assertion `eleven_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0, 0)` failed\n    arg00: 1\n    arg01: 2\n    arg02: 0\n    arg03: 0\n    arg04: 0\n    arg05: 0\n    arg06: 0\n    arg07: 0\n    arg08: 0\n    arg09: 0\n    arg10: 0"
     );
 }
 
@@ -142,18 +275,33 @@ fn test_const() {
         }
     );
 
-    assert_throws!(
-        one_assert::assert!(
-            const {
-                let a = 1;
-                a == 2
-            }
-        ),
-        "assertion `const { let a = 1; a == 2 }` failed
- caused by: block return assertion `a == 2` failed
-  left: 1
- right: 2"
-    );
+    if rustc_version::version().unwrap() < rustc_version::Version::new(1, 75, 0) {
+        assert_throws!(
+            one_assert::assert!(
+                const {
+                    let a = 1;
+                    a == 2
+                }
+            ),
+            "assertion `const { let a = 1 ; a == 2 }` failed
+  caused by: block return assertion `a == 2` failed
+     left: 1
+    right: 2"
+        );
+    } else {
+        assert_throws!(
+            one_assert::assert!(
+                const {
+                    let a = 1;
+                    a == 2
+                }
+            ),
+            "assertion `const { let a = 1; a == 2 }` failed
+  caused by: block return assertion `a == 2` failed
+     left: 1
+    right: 2"
+        );
+    }
 }
 
 // #[test]
@@ -187,10 +335,16 @@ fn test_if() {
     let y = 2;
     one_assert::assert!(if x == 1 { y == 2 } else { y == 3 });
 
-    assert_throws!(
-        one_assert::assert!(if x == 2 { true } else { y == 3 }),
-        "assertion `if x == 2 { true } else { y == 3 }` failed"
-    );
+    //     assert_throws!( // TODO: implement
+    //         one_assert::assert!(if x == 2 { true } else { y == 3 }),
+    //         "assertion `if x == 2 { true } else { y == 3 }` failed
+    //   caused by: else block `y == 3` evaluated to false
+    //      left: 2
+    //     right: 3
+    //   caused by: if condition `x == 2` evaluated to false
+    //      left: 1
+    //     right: 2"
+    //     );
 }
 
 #[test]
@@ -202,75 +356,255 @@ fn test_index() {
     let idx = 1;
     assert_throws!(
         one_assert::assert!(arr[idx]),
-        "assertion `arr[idx]` failed
- index: 1"
+        "assertion `arr [idx]` failed
+    index: 1"
     );
 
-    assert_throws!(one_assert::assert!(arr[2]), "assertion `arr[2]` failed");
+    assert_throws!(one_assert::assert!(arr[2]), "assertion `arr [2]` failed");
+}
+
+// #[test]
+// fn test_infer() {}
+
+// #[test]
+// fn test_let() {}
+
+#[test]
+fn test_lit() {
+    assert_throws!(
+        one_assert::assert!(false),
+        "surprisingly, `false` did not evaluate to true"
+    );
 }
 
 #[test]
-fn test_infer() {}
+fn test_loop() {
+    one_assert::assert!(loop {
+        break true;
+    });
+
+    if rustc_version::version().unwrap() < rustc_version::Version::new(1, 75, 0) {
+        assert_throws!(
+            one_assert::assert!(loop {
+                break false;
+            }),
+            "assertion `loop { break false ; }` failed"
+        );
+    } else {
+        assert_throws!(
+            one_assert::assert!(loop {
+                break false;
+            }),
+            "assertion `loop { break false; }` failed"
+        );
+    }
+}
 
 #[test]
-fn test_let() {}
+fn test_macro() {
+    one_assert::assert!(dbg!(true));
+
+    assert_throws!(
+        one_assert::assert!(dbg!(false)),
+        "assertion `dbg! (false)` failed"
+    );
+}
 
 #[test]
-fn test_lit() {}
+fn test_match() {
+    let x = 1;
+    let y = 2;
+    let z = 3;
+    one_assert::assert!(match (x, y) {
+        (2, _) => true,
+        (_, 2) => z == 3,
+        _ => false,
+    });
+
+    //     assert_throws!( // TODO: implement
+    //         one_assert::assert!(match (x, y) {
+    //             (2, _) => true,
+    //             (_, 2) => z == 5,
+    //             _ => false,
+    //         }),
+    //         "assertion `match (x, y) { (2, _) => true, (_, 2) => z == 5, _ => false }` failed
+    //   caused by: match arm `(_, 2) => z == 5` evaluated to false
+    //   caused by: match arm condition `z == 5` evaluated to false
+    //      left: 3
+    //     right: 5
+    //   caused by: match expression `(x, y)` evaluated to `(1, 2)`, entering arm `(_, 2)`"
+    //     );
+
+    //     assert_throws!(
+    //         one_assert::assert!(match x {
+    //             2 => true,
+    //             _ if y < 5 => {
+    //                 let w = 4;
+    //                 z == w
+    //             }
+    //             _ => false,
+    //         }),
+    //         "assertion `match x { 2 => true, _ if y < 5 => { let w = 4; z == w } _ => false, }` failed
+    //   caused by: match arm `_ if y < 5 => { let w = 4; z == w }` evaluated to false
+    //   caused by: match arm condition `z == w` evaluated to false
+    //      left: 3
+    //     right: 4
+    //   caused by: match expression `x` evaluated to `1`, entering arm `_ if y < 5`"
+    //     );
+}
 
 #[test]
-fn test_loop() {}
+fn test_methodcall() {
+    let s = String::from("hello");
+    one_assert::assert!(s.contains("ell"));
+
+    assert_throws!(
+        one_assert::assert!(s.contains("world")),
+        r#"assertion `s.contains("world")` failed
+    object: "hello"
+      arg0: "world""#
+    );
+}
 
 #[test]
-fn test_macro() {}
+fn test_paren() {
+    one_assert::assert!((true));
+
+    assert_throws!(one_assert::assert!((false)), "assertion `(false)` failed");
+}
 
 #[test]
-fn test_match() {}
+fn test_path() {
+    let x = true;
+    one_assert::assert!(x);
 
-#[test]
-fn test_methodcall() {}
+    let x = false;
+    assert_throws!(one_assert::assert!(x), "assertion `x` failed");
 
-#[test]
-fn test_paren() {}
+    mod foo {
+        pub mod bar {
+            pub const TRUE: bool = true;
+            pub const FALSE: bool = false;
+        }
 
-#[test]
-fn test_path() {}
+        pub struct Generic<const N: isize>;
+        impl<const N: isize> Generic<N> {
+            pub const IS_POSITIVE: bool = N > 0;
+        }
+    }
 
-#[test]
-fn test_range() {}
+    one_assert::assert!(foo::bar::TRUE);
 
-#[test]
-fn test_reference() {}
+    assert_throws!(
+        one_assert::assert!(foo::bar::FALSE),
+        "assertion `foo :: bar :: FALSE` failed"
+    );
 
-#[test]
-fn test_repeat() {}
+    one_assert::assert!(foo::Generic::<1>::IS_POSITIVE);
 
-#[test]
-fn test_return() {}
+    if rustc_version::version().unwrap() < rustc_version::Version::new(1, 75, 0) {
+        assert_throws!(
+            one_assert::assert!(foo::Generic::<-1>::IS_POSITIVE),
+            "assertion `foo :: Generic :: < - 1 > :: IS_POSITIVE` failed"
+        );
+    } else {
+        assert_throws!(
+            one_assert::assert!(foo::Generic::<-1>::IS_POSITIVE),
+            "assertion `foo :: Generic :: < -1 > :: IS_POSITIVE` failed"
+        );
+    }
+}
 
-#[test]
-fn test_struct() {}
+// #[test]
+// fn test_range() {}
+
+// #[test]
+// fn test_reference() {}
+
+// #[test]
+// fn test_repeat() {}
+
+// #[test]
+// fn test_return() {}
+
+// #[test]
+// fn test_struct() {}
 
 #[test]
 fn test_try() {}
 
-#[test]
-fn test_tryblock() {}
+// #[test]
+// fn test_tuple() {}
 
 #[test]
-fn test_tuple() {}
+fn test_unary() {
+    macro_rules! test_unary_op_to_bool {
+        ($op:tt, $op_name:ident, $op_fn_name:ident) => {{
+            #[derive(Debug)]
+            struct OpToBool(bool);
+            impl std::ops::$op_name for OpToBool {
+                type Output = bool;
+                fn $op_fn_name(self) -> bool {
+                    self.0
+                }
+            }
+
+            let a = OpToBool(true);
+            one_assert::assert!($op a);
+
+            let b = OpToBool(false);
+            assert_throws!(
+                one_assert::assert!($op b),
+                concat!(
+                    "assertion `", stringify!($op), " b` failed
+    original: OpToBool(false)"
+                )
+            );
+        }}
+    }
+    test_unary_op_to_bool!(!, Not, not);
+    test_unary_op_to_bool!(-, Neg, neg);
+
+    {
+        #[derive(Debug)]
+        struct OpToBool(bool);
+        impl std::ops::Deref for OpToBool {
+            type Target = bool;
+            fn deref(&self) -> &bool {
+                &self.0
+            }
+        }
+
+        let a = OpToBool(true);
+        one_assert::assert!(*a);
+
+        let b = OpToBool(false);
+        assert_throws!(
+            one_assert::assert!(*b),
+            "assertion `* b` failed
+    original: OpToBool(false)"
+        );
+    }
+}
 
 #[test]
-fn test_unary() {}
+fn test_unsafe() {
+    one_assert::assert!(unsafe { std::mem::transmute(1u8) });
 
-#[test]
-fn test_unsafe() {}
+    assert_throws!(
+        one_assert::assert!(unsafe { std::mem::transmute(0u8) }),
+        "assertion `unsafe { std :: mem :: transmute(0u8) }` failed
+  caused by: block return assertion `std :: mem :: transmute(0u8)` failed
+    arg0: 0"
+    );
+}
 
-#[test]
-fn test_verbatim() {}
+// #[test]
+// fn test_verbatim() {}
 
-#[test]
-fn test_while() {}
+// #[test]
+// fn test_while() {}
 
-#[test]
-fn test_yield() {}
+// Experimental syntax:
+// test_tryblock
+// test_yield

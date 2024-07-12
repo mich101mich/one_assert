@@ -75,16 +75,16 @@ fn test_one_assert() {
     assert_throws!(
         one_assert::assert!(x == 2),
         "assertion `x == 2` failed
-  left: 1
- right: 2",
+     left: 1
+    right: 2",
     );
 
     let x = true;
     assert_throws!(
         one_assert::assert!(x && false),
         "assertion `x && false` failed
-  left: true
- right: false",
+     left: true
+    right: false",
     );
 }
 
@@ -111,8 +111,8 @@ fn test_single_evaluation() {
     assert_throws!(
         one_assert::assert!(caller() == false),
         "assertion `caller() == false` failed
-  left: true
- right: false",
+     left: true
+    right: false",
     );
 }
 
@@ -133,8 +133,8 @@ fn test_crazy_nonsense() {
     assert_throws!(
         one_assert::assert!(x + AddsToBool(2)),
         "assertion `x + AddsToBool(2)` failed
-  left: AddsToBool(1)
- right: AddsToBool(2)",
+     left: AddsToBool(1)
+    right: AddsToBool(2)",
     );
 }
 

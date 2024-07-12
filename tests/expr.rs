@@ -226,9 +226,9 @@ fn test_call() {
     assert_throws!(
         one_assert::assert!(dummy_fn(a, b, c)),
         "assertion `dummy_fn(a, b, c)` failed
-    arg0: true
-    arg1: 1
-    arg2: \"world\""
+    arg 0: true
+    arg 1: 1
+    arg 2: \"world\""
     );
 
     fn ten_arg_fn(a0: u8, a1: u8, _: u8, _: u8, _: u8, _: u8, _: u8, _: u8, _: u8, _: u8) -> bool {
@@ -239,7 +239,17 @@ fn test_call() {
     let b = 2;
     assert_throws!(
         one_assert::assert!(ten_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0)),
-        "assertion `ten_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0)` failed\n    arg0: 1\n    arg1: 2\n    arg2: 0\n    arg3: 0\n    arg4: 0\n    arg5: 0\n    arg6: 0\n    arg7: 0\n    arg8: 0\n    arg9: 0"
+        "assertion `ten_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0)` failed
+    arg 0: 1
+    arg 1: 2
+    arg 2: 0
+    arg 3: 0
+    arg 4: 0
+    arg 5: 0
+    arg 6: 0
+    arg 7: 0
+    arg 8: 0
+    arg 9: 0"
     );
 
     #[rustfmt::skip]
@@ -249,7 +259,18 @@ fn test_call() {
 
     assert_throws!(
         one_assert::assert!(eleven_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0, 0)),
-        "assertion `eleven_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0, 0)` failed\n    arg00: 1\n    arg01: 2\n    arg02: 0\n    arg03: 0\n    arg04: 0\n    arg05: 0\n    arg06: 0\n    arg07: 0\n    arg08: 0\n    arg09: 0\n    arg10: 0"
+        "assertion `eleven_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0, 0)` failed
+    arg  0: 1
+    arg  1: 2
+    arg  2: 0
+    arg  3: 0
+    arg  4: 0
+    arg  5: 0
+    arg  6: 0
+    arg  7: 0
+    arg  8: 0
+    arg  9: 0
+    arg 10: 0"
     );
 }
 
@@ -421,36 +442,67 @@ fn test_match() {
         _ => false,
     });
 
-    //     assert_throws!( // TODO: implement
-    //         one_assert::assert!(match (x, y) {
-    //             (2, _) => true,
-    //             (_, 2) => z == 5,
-    //             _ => false,
-    //         }),
-    //         "assertion `match (x, y) { (2, _) => true, (_, 2) => z == 5, _ => false }` failed
-    //   caused by: match arm `(_, 2) => z == 5` evaluated to false
-    //   caused by: match arm condition `z == 5` evaluated to false
-    //      left: 3
-    //     right: 5
-    //   caused by: match expression `(x, y)` evaluated to `(1, 2)`, entering arm `(_, 2)`"
-    //     );
+    if rustc_version::version().unwrap() < rustc_version::Version::new(1, 75, 0) {
+        assert_throws!(
+            one_assert::assert!(match (x, y) {
+                (2, _) => true,
+                (_, 2) => z == 5,
+                _ => false,
+            }),
+            "assertion `match(x, y) { (2, _) => true, (_, 2) => z == 5, _ => false, }` failed
+    matched value: (1, 2)
+  caused by: match (x, y) entered arm `(_, 2)` where assertion `z == 5` failed
+     left: 3
+    right: 5"
+        );
 
-    //     assert_throws!(
-    //         one_assert::assert!(match x {
-    //             2 => true,
-    //             _ if y < 5 => {
-    //                 let w = 4;
-    //                 z == w
-    //             }
-    //             _ => false,
-    //         }),
-    //         "assertion `match x { 2 => true, _ if y < 5 => { let w = 4; z == w } _ => false, }` failed
-    //   caused by: match arm `_ if y < 5 => { let w = 4; z == w }` evaluated to false
-    //   caused by: match arm condition `z == w` evaluated to false
-    //      left: 3
-    //     right: 4
-    //   caused by: match expression `x` evaluated to `1`, entering arm `_ if y < 5`"
-    //     );
+        assert_throws!(
+            one_assert::assert!(match x {
+                2 => true,
+                _ if y < 5 => {
+                    let w = 4;
+                    z == w
+                }
+                _ => false,
+            }),
+            "assertion `match x { 2 => true, _ if y < 5 => { let w = 4 ; z == w } _ => false, }` failed
+    matched value: 1
+  caused by: match x entered arm `_ if y < 5` where assertion `{ let w = 4 ; z == w }` failed
+  caused by: block return assertion `z == w` failed
+     left: 3
+    right: 4"
+        );
+    } else {
+        assert_throws!(
+            one_assert::assert!(match (x, y) {
+                (2, _) => true,
+                (_, 2) => z == 5,
+                _ => false,
+            }),
+            "assertion `match (x, y) { (2, _) => true, (_, 2) => z == 5, _ => false, }` failed
+    matched value: (1, 2)
+  caused by: match (x, y) entered arm `(_, 2)` where assertion `z == 5` failed
+     left: 3
+    right: 5"
+        );
+
+        assert_throws!(
+            one_assert::assert!(match x {
+                2 => true,
+                _ if y < 5 => {
+                    let w = 4;
+                    z == w
+                }
+                _ => false,
+            }),
+            "assertion `match x { 2 => true, _ if y < 5 => { let w = 4; z == w } _ => false, }` failed
+    matched value: 1
+  caused by: match x entered arm `_ if y < 5` where assertion `{ let w = 4; z == w }` failed
+  caused by: block return assertion `z == w` failed
+     left: 3
+    right: 4"
+        );
+    }
 }
 
 #[test]
@@ -462,7 +514,7 @@ fn test_methodcall() {
         one_assert::assert!(s.contains("world")),
         r#"assertion `s.contains("world")` failed
     object: "hello"
-      arg0: "world""#
+     arg 0: "world""#
     );
 }
 
@@ -531,7 +583,25 @@ fn test_path() {
 // fn test_struct() {}
 
 #[test]
-fn test_try() {}
+fn test_try() {
+    fn fallible_fn() -> Result<(), ()> {
+        let x = Ok(true);
+        one_assert::assert!(x?);
+
+        Ok(())
+    }
+    fallible_fn().unwrap();
+
+    assert_throws!(
+        (|| -> Result<(), ()> {
+            let x = Ok(false);
+            one_assert::assert!(x?);
+            Ok(())
+        })()
+        .unwrap(),
+        "assertion `x ?` failed"
+    );
+}
 
 // #[test]
 // fn test_tuple() {}
@@ -595,7 +665,7 @@ fn test_unsafe() {
         one_assert::assert!(unsafe { std::mem::transmute(0u8) }),
         "assertion `unsafe { std :: mem :: transmute(0u8) }` failed
   caused by: block return assertion `std :: mem :: transmute(0u8)` failed
-    arg0: 0"
+    arg 0: 0"
     );
 }
 

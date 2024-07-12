@@ -147,11 +147,10 @@ pub fn assert(input: TokenStream1) -> TokenStream1 {
     }
 }
 
+#[derive(Clone)]
 struct State {
     /// Code that sets up the variables for the assertion
     setup: TokenStream,
-    /// The expression that is evaluated. Must evaluate to a boolean
-    expression: TokenStream,
     /// The message that is displayed if the assertion fails. Must contain one `{}` for each dynamic argument
     format_message: String,
     /// Arguments that are only evaluated if the assertion fails
@@ -159,7 +158,7 @@ struct State {
     /// Pairs of (variable name, debug-printed value) that are used in the assertion and should be printed in the error message
     variables: Vec<(String, TokenStream)>,
     /// Whether the expression is in an unsafe block
-    is_unsafe: bool,
+    possibly_unsafe: TokenStream,
     /// Counter for creating unique identifiers
     next_ident_id: usize,
 }
@@ -168,11 +167,10 @@ impl State {
     fn new() -> Self {
         Self {
             setup: TokenStream::new(),
-            expression: TokenStream::new(),
             format_message: String::new(),
             dynamic_args: vec![],
             variables: vec![],
-            is_unsafe: false,
+            possibly_unsafe: TokenStream::new(),
             next_ident_id: 0,
         }
     }
@@ -185,8 +183,8 @@ impl State {
     }
 
     /// Create a variable from an expression and store it in the setup code
-    fn add_var(&mut self, expr: syn::Expr, name: &str) -> TokenStream {
-        let var_debug_str = self.create_ident(&format!("{name}_str"));
+    fn add_var(&mut self, expr: syn::Expr, identifier: &str, display: &str) -> TokenStream {
+        let var_debug_str = self.create_ident(&format!("{identifier}_str"));
 
         let var_access;
         if matches!(expr, syn::Expr::Path(_)) {
@@ -197,7 +195,7 @@ impl State {
                 let #var_debug_str = ::std::format!("{:?}", #var_access);
             });
         } else {
-            let var_ident = self.create_ident(name);
+            let var_ident = self.create_ident(identifier);
 
             // See note at the end of the file for an explanation on the span manipulation here
             let expr_span = utils::FullSpan::from_spanned(&expr);
@@ -211,7 +209,7 @@ impl State {
 
         // store variable for now instead of printing it immediately, so that all the variables can be aligned
         self.variables
-            .push((name.to_owned(), var_debug_str.to_token_stream()));
+            .push((display.to_owned(), var_debug_str.to_token_stream()));
 
         var_access
     }
@@ -230,6 +228,11 @@ impl State {
             self.dynamic_args.push(var_debug_str.to_token_stream());
         }
     }
+
+    /// Adds a "caused by" message to the format message
+    fn add_cause(&mut self, cause: &str) {
+        self.format_message += &format!("\n  caused by: {}", cause);
+    }
 }
 
 fn assert_internal(input: Args) -> Result<TokenStream> {
@@ -246,7 +249,10 @@ fn assert_internal(input: Args) -> Result<TokenStream> {
     }
 
     let mut state = State::new();
-    state.expression = expr.to_token_stream();
+    state.setup = quote! {
+        /// A wrapper type to create multi-token variables for span manipulation
+        struct __OneAssertWrapper<T>(T);
+    };
     state.format_message = format!("assertion `{expr_str}` failed");
 
     if !format.is_empty() {
@@ -256,10 +262,11 @@ fn assert_internal(input: Args) -> Result<TokenStream> {
             .push(quote! { ::std::format_args!(#format) });
     }
 
-    eval_expr(expr, &mut state)
+    eval_expr(expr, state)
 }
 
-fn eval_expr(e: syn::Expr, state: &mut State) -> Result<TokenStream> {
+fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
+    let mut assert_condition = e.to_token_stream();
     match e {
         // [a, b, c, d]
         syn::Expr::Array(_) => {} // let the compiler generate the error
@@ -283,17 +290,13 @@ fn eval_expr(e: syn::Expr, state: &mut State) -> Result<TokenStream> {
         syn::Expr::Binary(syn::ExprBinary {
             left, op, right, ..
         }) => {
-            let lhs = state.add_var(*left, "left");
-            let rhs = state.add_var(*right, "right");
-            state.expression = quote! { #lhs #op #rhs };
+            let lhs = state.add_var(*left, "lhs", "left");
+            let rhs = state.add_var(*right, "rhs", "right");
+            assert_condition = quote! { #lhs #op #rhs };
         }
 
         // { ... }
-        syn::Expr::Block(syn::ExprBlock { block, .. }) => {
-            if let Some(replacement) = eval_block(block, state)? {
-                return Ok(replacement);
-            }
-        }
+        syn::Expr::Block(syn::ExprBlock { block, .. }) => return eval_block(block, state),
 
         // break
         syn::Expr::Break(_) => {
@@ -305,11 +308,10 @@ fn eval_expr(e: syn::Expr, state: &mut State) -> Result<TokenStream> {
         // function(args...)
         syn::Expr::Call(syn::ExprCall { args, func, .. }) if !args.is_empty() => {
             let index_len = (args.len() - 1).to_string().len();
-            let out_args = args
-                .into_iter()
-                .enumerate()
-                .map(|(i, arg)| state.add_var(arg, &format!("arg{i:0>index_len$}")));
-            state.expression = quote! { #func(#(#out_args),*) };
+            let out_args = args.into_iter().enumerate().map(|(i, arg)| {
+                state.add_var(arg, &format!("arg{i}"), &format!("arg {i:>index_len$}"))
+            });
+            assert_condition = quote! { #func(#(#out_args),*) };
         }
         // function() // no args
         syn::Expr::Call(_) => {} // just a plain function call that returns a boolean or not. Nothing more to add here
@@ -322,11 +324,7 @@ fn eval_expr(e: syn::Expr, state: &mut State) -> Result<TokenStream> {
         syn::Expr::Closure(_) => {} // let the compiler generate the error
 
         // const { ... }
-        syn::Expr::Const(syn::ExprConst { block, .. }) => {
-            if let Some(replacement) = eval_block(block, state)? {
-                return Ok(replacement);
-            }
-        }
+        syn::Expr::Const(syn::ExprConst { block, .. }) => return eval_block(block, state),
         // the way this is structured means you can technically assert a non-const block while pretending it's a const block,
         // but then again, why do you have a const block in an assert?
 
@@ -363,8 +361,8 @@ fn eval_expr(e: syn::Expr, state: &mut State) -> Result<TokenStream> {
         // expr[index]
         syn::Expr::Index(syn::ExprIndex { index, expr, .. }) => {
             if !matches!(*index, syn::Expr::Lit(_)) {
-                let index = state.add_var(*index, "index");
-                state.expression = quote! { #expr[#index] };
+                let index = state.add_var(*index, "index", "index");
+                assert_condition = quote! { #expr[#index] };
             }
             // not printing literals, because their value is already known
             // not printing the indexed object, because the output could be huge.
@@ -399,9 +397,53 @@ fn eval_expr(e: syn::Expr, state: &mut State) -> Result<TokenStream> {
         syn::Expr::Macro(_) => {} // not touching this
 
         // match expr { ... }
-        syn::Expr::Match(syn::ExprMatch { .. }) => {
-            // TODO: rework to branch properly
-            // let match_expr = state.add_var(*expr, "matched");
+        syn::Expr::Match(syn::ExprMatch { arms, expr, .. }) => {
+            let expr_str = printable_expr_string(&expr);
+            let match_expr = state.add_var(*expr, "matched", "matched value");
+
+            state.resolve_variables();
+            let setup = std::mem::take(&mut state.setup);
+            let possibly_unsafe = std::mem::take(&mut state.possibly_unsafe);
+
+            let mut arms_output = TokenStream::new();
+            for arm in arms {
+                let syn::Arm {
+                    pat, guard, body, ..
+                } = arm;
+
+                let guard = guard
+                    .map(|(if_token, expr)| quote! { #if_token #expr })
+                    .unwrap_or_default();
+
+                let pattern = quote! { #pat #guard };
+
+                let mut arm_state = state.clone();
+
+                arm_state.add_cause(&format!(
+                    "match {expr_str} entered arm `{}` where assertion `{}` failed",
+                    printable_expr_string(&pattern),
+                    printable_expr_string(&body)
+                ));
+
+                let assert_eval = eval_expr(*body, arm_state)?;
+
+                arms_output.extend(quote! {
+                    #pattern => {
+                        #assert_eval
+                    }
+                });
+            }
+
+            let output = quote! {
+                #[allow(unused)]
+                #possibly_unsafe {
+                    #setup
+                    match #match_expr {
+                        #arms_output
+                    }
+                }
+            };
+            return Ok(output);
         }
 
         // receiver.method(args...)
@@ -412,13 +454,12 @@ fn eval_expr(e: syn::Expr, state: &mut State) -> Result<TokenStream> {
             args,
             ..
         }) => {
-            let obj = state.add_var(*receiver, "object");
+            let obj = state.add_var(*receiver, "object", "object");
             let index_len = (args.len() - 1).to_string().len();
-            let out_args = args
-                .into_iter()
-                .enumerate()
-                .map(|(i, arg)| state.add_var(arg, &format!("arg{i:0>index_len$}")));
-            state.expression = quote! { #obj . #method #turbofish (#(#out_args),*) };
+            let out_args = args.into_iter().enumerate().map(|(i, arg)| {
+                state.add_var(arg, &format!("arg{i}"), &format!("arg {i:>index_len$}"))
+            });
+            assert_condition = quote! { #obj . #method #turbofish (#(#out_args),*) };
         }
 
         // (expr)
@@ -456,16 +497,14 @@ fn eval_expr(e: syn::Expr, state: &mut State) -> Result<TokenStream> {
 
         // op expr
         syn::Expr::Unary(syn::ExprUnary { expr, op, .. }) => {
-            let original = state.add_var(*expr, "original");
-            state.expression = quote! { #op #original };
+            let original = state.add_var(*expr, "original", "original");
+            assert_condition = quote! { #op #original };
         }
 
         // unsafe { ... }
         syn::Expr::Unsafe(syn::ExprUnsafe { block, .. }) => {
-            state.is_unsafe = true;
-            if let Some(replacement) = eval_block(block, state)? {
-                return Ok(replacement);
-            }
+            state.possibly_unsafe = quote! { unsafe };
+            return eval_block(block, state);
         }
 
         // something
@@ -486,28 +525,19 @@ fn eval_expr(e: syn::Expr, state: &mut State) -> Result<TokenStream> {
 
     state.resolve_variables();
 
-    let possibly_unsafe = if state.is_unsafe {
-        quote! { unsafe }
-    } else {
-        quote! {}
-    };
-
     let State {
         setup,
-        expression,
         format_message,
         dynamic_args,
+        possibly_unsafe,
         ..
     } = state;
 
     let output = quote! {
         #[allow(unused)]
         #possibly_unsafe {
-            /// A wrapper type to create multi-token variables for span manipulation
-            struct __OneAssertWrapper<T>(T);
-
             #setup
-            if #expression {
+            if #assert_condition {
                 // using an empty if instead of `!(#expression)` to avoid messing with the spans in `expression`.
                 // And to produce a better error: "expected bool, found <type>" instead of
                 // "no unary operator '!' implemented for <type>"
@@ -519,25 +549,34 @@ fn eval_expr(e: syn::Expr, state: &mut State) -> Result<TokenStream> {
     Ok(output)
 }
 
-fn eval_block(mut block: syn::Block, state: &mut State) -> Result<Option<TokenStream>> {
-    let Some(last_stmt) = block.stmts.pop() else {
-        return Ok(None); // let the compiler generate the error
-    };
-    let syn::Stmt::Expr(expr, None) = last_stmt else {
-        return Ok(None); // let the compiler generate the error
-    };
-
+fn eval_block(mut block: syn::Block, mut state: State) -> Result<TokenStream> {
     state.resolve_variables();
 
-    let condition_string = printable_expr_string(&expr);
-    state.format_message +=
-        &format!("\n  caused by: block return assertion `{condition_string}` failed",);
+    let original_tokens = block.to_token_stream();
+
+    let Some(syn::Stmt::Expr(expr, None)) = block.stmts.pop() else {
+        let State {
+            setup,
+            possibly_unsafe,
+            ..
+        } = state;
+        return Ok(quote! {
+            #[allow(unused)]
+            #possibly_unsafe {
+                #setup
+                if #original_tokens {}
+            }
+        });
+    };
+
+    let condition_str = printable_expr_string(&expr);
+    state.add_cause(&format!("block return assertion `{condition_str}` failed"));
 
     for stmt in block.stmts {
         state.setup.extend(stmt.to_token_stream());
     }
 
-    eval_expr(expr, state).map(Some)
+    eval_expr(expr, state)
 }
 
 fn printable_expr_string(expr: &impl quote::ToTokens) -> String {

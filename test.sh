@@ -8,6 +8,8 @@ elif [[ -n "$1" ]]; then
     exit 1
 fi
 
+set -e
+
 TMP_FILE="/tmp/one_assert_test_out.txt"
 
 function handle_output {
@@ -37,10 +39,18 @@ function try_silent {
     fi
 }
 
+function assert_no_change {
+    DIR="$1"
+    if ! git diff-files --quiet --ignore-cr-at-eol "${DIR}"; then
+        >&2 echo "Changes in ${DIR} detected, aborting"
+        exit 1
+    fi
+}
+
 BASE_DIR="$(realpath "$(dirname "$0")")"
 
-MSRV=$(grep '^rust-version = ".*"$' "${BASE_DIR}/Cargo.toml" | sed -E 's/^rust-version = "(.*)"$/\1/') || exit 1
-[[ -n "${MSRV}" ]] || exit 1
+MSRV=$(grep '^rust-version = ".*"$' "${BASE_DIR}/Cargo.toml" | sed -E 's/^rust-version = "(.*)"$/\1/')
+[[ -n "${MSRV}" ]]
 echo "Minimum supported Rust version: ${MSRV}"
 
 OUT_DIRS="${BASE_DIR}/test_dirs"
@@ -59,42 +69,49 @@ export RUSTFLAGS="-D warnings"
 export RUSTDOCFLAGS="-D warnings"
 
 # main tests
-(
-    cd "${BASE_DIR}" || exit 1
-    try_silent rustup update || exit 1
-    try_silent cargo update || exit 1
-    try_silent cargo +stable test || exit 1
-    try_silent cargo +nightly test || exit 1
+cd "${BASE_DIR}"
+try_silent rustup update
+try_silent cargo update
+try_silent cargo +stable test
+try_silent cargo +nightly test
 
-    if [[ OVERWRITE -eq 1 ]]; then
-        echo "Trybuild overwrite mode enabled"
-        export TRYBUILD=overwrite
-        try_silent cargo +stable test error_message_tests -- --ignored || exit 1
-        git add tests/fail # stage overwrite changes first, in case `nightly` would undo them
-        try_silent cargo +nightly test error_message_tests -- --ignored || exit 1
-    else
-        try_silent cargo +stable test error_message_tests -- --ignored || exit 1
-        try_silent cargo +nightly test error_message_tests -- --ignored || exit 1
-    fi
-    try_silent cargo +nightly doc --no-deps || exit 1
-    try_silent cargo +nightly clippy -- -D warnings || exit 1
-    try_silent cargo +stable fmt --check || exit 1
-) || exit 1
+if [[ OVERWRITE -eq 1 ]]; then
+    echo "Trybuild overwrite mode enabled"
+    export TRYBUILD=overwrite
+
+    # "overwrite" will (as the name implies) overwrite any incorrect output files in the error_message_tests.
+    # There is however the problem that the stable and nightly versions might have different outputs. If they
+    # are simply run one after the other, then the second one will overwrite the first one. To avoid this, we
+    # use git to check if the files have changed after every step.
+    assert_no_change tests/fail # Check for initial changes that would skew the later checks
+
+    try_silent cargo +stable test error_message_tests -- --ignored
+    assert_no_change tests/fail
+
+    try_silent cargo +nightly test error_message_tests -- --ignored
+    assert_no_change tests/fail
+else
+    try_silent cargo +stable test error_message_tests -- --ignored
+    try_silent cargo +nightly test error_message_tests -- --ignored
+fi
+try_silent cargo +nightly doc --no-deps
+try_silent cargo +nightly clippy -- -D warnings
+try_silent cargo +stable fmt --check
 
 # minimum supported rust version
 (
-    cd "${MSRV_DIR}" || exit 1
-    try_silent rustup install "${MSRV}" || exit 1
-    try_silent cargo "+${MSRV}" test --tests || exit 1 # only run --tests, which excludes the doctests from Readme.md
-) || exit 1
+    cd "${MSRV_DIR}"
+    try_silent rustup install "${MSRV}"
+    try_silent cargo "+${MSRV}" test --tests # only run --tests, which excludes the doctests from Readme.md
+)
 
 # minimum versions
 (
-    cd "${MIN_VERSIONS_DIR}" || exit 1
-    try_silent cargo +nightly -Z minimal-versions update || exit 1
+    cd "${MIN_VERSIONS_DIR}"
+    try_silent cargo +nightly -Z minimal-versions update
 
-    try_silent cargo +stable test || exit 1
-    try_silent cargo +nightly test || exit 1
-) || exit 1
+    try_silent cargo +stable test
+    try_silent cargo +nightly test
+)
 
 echo "All tests passed!"

@@ -111,12 +111,12 @@ impl syn::parse::Parse for Args {
             Err(e) => {
                 let err = if input.is_empty() {
                     // syn's error would use call_site instead of pointing at the broken expression
-                    let msg = "incomplete expression";
+                    let msg = format!("incomplete expression: {}", e);
                     syn::Error::new_spanned(span_source, msg) // checked in tests/fail/malformed_expr.rs
-                } else if input.peek(syn::Token![,]) {
+                } else if let Ok(comma) = input.parse::<syn::Token![,]>() {
                     // syn's error would point at the ',' saying "expected an expression"
-                    let msg = "incomplete expression";
-                    syn::Error::new_spanned(span_source, msg) // checked in tests/fail/malformed_expr.rs
+                    let msg = format!("Expression before the comma is incomplete: {}", e);
+                    syn::Error::new_spanned(comma, msg) // checked in tests/fail/malformed_expr.rs
                 } else {
                     e
                 };
@@ -129,7 +129,7 @@ impl syn::parse::Parse for Args {
             format = TokenStream::new();
         } else if let Err(e) = input.parse::<syn::Token![,]>() {
             let msg = "condition has to be followed by a comma, if a message is provided";
-            return Err(syn::Error::new(e.span(), msg));
+            return Err(syn::Error::new(e.span(), msg)); // checked in tests/fail/malformed_parameters.rs
         } else {
             format = input.parse()?;
         }
@@ -284,13 +284,13 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         // a = b
         syn::Expr::Assign(syn::ExprAssign { eq_token, .. }) => {
             let msg = "Expected a boolean expression, found an assignment. Did you intend to compare with `==`?";
-            return Error::err_spanned(eq_token, msg);
+            return Error::err_spanned(eq_token, msg); // checked in tests/fail/expr/assign.rs
         }
 
         // async { ... }
         syn::Expr::Async(_) => {
             let msg = "Expected a boolean expression, found an async block. Did you intend to await a future?";
-            return Error::err_spanned(e, msg);
+            return Error::err_spanned(e, msg); // checked in tests/fail/expr/async.rs
         }
 
         // future.await
@@ -298,11 +298,14 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
 
         // left <op> right
         syn::Expr::Binary(syn::ExprBinary {
-            left, op, right, ..
+            left,
+            op,
+            right,
+            attrs,
         }) => {
             let lhs = state.add_var(*left, "lhs", "left");
             let rhs = state.add_var(*right, "rhs", "right");
-            assert_condition = quote! { #lhs #op #rhs };
+            assert_condition = quote! { #(#attrs)* #lhs #op #rhs };
         }
 
         // { ... }
@@ -312,16 +315,26 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         syn::Expr::Break(_) => {
             // we need to generate our own error, because break returns `!` so it compiles, but the assertion makes no sense
             let msg = "Expected a boolean expression, found a break statement";
-            return Error::err_spanned(e, msg);
+            return Error::err_spanned(e, msg); // checked in tests/fail/expr/break.rs
         }
 
         // function(args...)
-        syn::Expr::Call(syn::ExprCall { args, func, .. }) if !args.is_empty() => {
+        syn::Expr::Call(syn::ExprCall {
+            args,
+            func,
+            paren_token,
+            attrs,
+        }) if !args.is_empty() => {
             let index_len = (args.len() - 1).to_string().len();
             let out_args = args.into_iter().enumerate().map(|(i, arg)| {
                 state.add_var(arg, &format!("arg{i}"), &format!("arg {i:>index_len$}"))
             });
-            assert_condition = quote! { #func(#(#out_args),*) };
+
+            // output: `quote! { #(#attrs)* #func ( #(#out_args),* ) }` except we want to use the original parentheses for span purposes
+            assert_condition = quote! { #(#attrs)* #func };
+            paren_token.surround(&mut assert_condition, |out| {
+                out.extend(quote! { #(#out_args),* })
+            });
         }
         // function() // no args
         syn::Expr::Call(_) => {} // just a plain function call that returns a boolean or not. Nothing more to add here
@@ -342,7 +355,7 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         syn::Expr::Continue(_) => {
             // we need to generate our own error, because continue returns `!` so it compiles, but the assertion makes no sense
             let msg = "Expected a boolean expression, found a continue statement";
-            return Error::err_spanned(e, msg);
+            return Error::err_spanned(e, msg); // checked in tests/fail/expr/continue.rs
         }
 
         // obj.field
@@ -354,7 +367,7 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         syn::Expr::ForLoop(_) => {
             // we generate our own error, because the compiler just says "expected bool, found ()"
             let msg = "Expected a boolean expression, found a for loop";
-            return Error::err_spanned(e, msg);
+            return Error::err_spanned(e, msg); // checked in tests/fail/expr/forloop.rs
         }
 
         // group with invisible delimiters?
@@ -366,8 +379,9 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         syn::Expr::If(syn::ExprIf {
             cond,
             then_branch,
-            else_branch: Some((_else, else_branch)),
-            ..
+            else_branch: Some((else_token, else_branch)),
+            attrs,
+            if_token,
         }) => {
             let condition_str = printable_expr_string(&cond);
             let condition =
@@ -388,9 +402,9 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
                 #[allow(unused)]
                 #possibly_unsafe {
                     #setup
-                    if #condition {
+                    #(#attrs)* #if_token #condition {
                         #then_branch
-                    } #else_branches
+                    } #else_token #else_branches
                 }
             };
             return Ok(output);
@@ -398,12 +412,20 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         syn::Expr::If(_) => {} // if without else: let the compiler generate the error
 
         // expr[index]
-        syn::Expr::Index(syn::ExprIndex { index, expr, .. }) => {
+        syn::Expr::Index(syn::ExprIndex {
+            index,
+            expr,
+            attrs,
+            bracket_token,
+        }) => {
             if !matches!(*index, syn::Expr::Lit(_)) {
                 let index = state.add_var(*index, "index", "index");
-                assert_condition = quote! { #expr[#index] };
+                // output: `quote! { #(#attrs)* #expr [#index] }` except we want to use the original brackets for span purposes
+                assert_condition = quote! { #(#attrs)* #expr };
+                bracket_token.surround(&mut assert_condition, |out| index.to_tokens(out));
             }
-            // not printing literals, because their value is already known
+            // not printing literals, because their value is already known.
+
             // not printing the indexed object, because the output could be huge.
             // If we knew the object was a form of array, then we could would slice the range around the index,
             // but it could also be a HashMap or a custom type, so we can't do that.
@@ -416,7 +438,7 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         syn::Expr::Let(_) => {
             // we have to generate our own error, because the produced code is `if #expression`, which would become `if let ...` 😂
             let msg = "Expected a boolean expression, found a let statement";
-            return Error::err_spanned(e, msg);
+            return Error::err_spanned(e, msg); // checked in tests/fail/expr/let.rs
         }
 
         // lit
@@ -436,7 +458,13 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         syn::Expr::Macro(_) => {} // not touching this
 
         // match expr { ... }
-        syn::Expr::Match(syn::ExprMatch { arms, expr, .. }) => {
+        syn::Expr::Match(syn::ExprMatch {
+            arms,
+            expr,
+            attrs,
+            match_token,
+            brace_token,
+        }) => {
             let expr_str = printable_expr_string(&expr);
             let match_expr = state.add_var(*expr, "matched", "matched value");
 
@@ -445,7 +473,12 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
             let mut arms_output = TokenStream::new();
             for arm in arms {
                 let syn::Arm {
-                    pat, guard, body, ..
+                    pat,
+                    guard,
+                    body,
+                    attrs,
+                    fat_arrow_token,
+                    ..
                 } = arm;
 
                 let guard = guard
@@ -465,11 +498,15 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
                 let assert_eval = eval_expr(*body, arm_state)?;
 
                 arms_output.extend(quote! {
-                    #pattern => {
+                    #(#attrs)* #pattern #fat_arrow_token {
                         #assert_eval
                     }
                 });
             }
+
+            // output: `quote! { #(#attrs)* #match_token #match_expr { #arms_output } }` except we want to use the original braces for span purposes
+            let mut inner_tokens = quote! { #(#attrs)* #match_token #match_expr };
+            brace_token.surround(&mut inner_tokens, |out| out.extend(arms_output));
 
             let State {
                 setup,
@@ -481,9 +518,7 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
                 #[allow(unused)]
                 #possibly_unsafe {
                     #setup
-                    match #match_expr {
-                        #arms_output
-                    }
+                    #inner_tokens
                 }
             };
             return Ok(output);
@@ -495,14 +530,21 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
             method,
             turbofish,
             args,
-            ..
+            attrs,
+            dot_token,
+            paren_token,
         }) => {
             let obj = state.add_var(*receiver, "object", "object");
             let index_len = (args.len() - 1).to_string().len();
             let out_args = args.into_iter().enumerate().map(|(i, arg)| {
                 state.add_var(arg, &format!("arg{i}"), &format!("arg {i:>index_len$}"))
             });
-            assert_condition = quote! { #obj . #method #turbofish (#(#out_args),*) };
+
+            // output: `quote! { #(attrs)* #obj #dot_token #method #turbofish ( #(#out_args),* ) }` except we want to use the original parentheses for span purposes
+            assert_condition = quote! { #(#attrs)* #obj #dot_token #method #turbofish };
+            paren_token.surround(&mut assert_condition, |out| {
+                out.extend(quote! { #(#out_args),* })
+            });
         }
 
         // (expr)
@@ -526,7 +568,7 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         syn::Expr::Return(_) => {
             // we need to generate our own error, because return returns `!` so it compiles, but the assertion makes no sense
             let msg = "Expected a boolean expression, found a return statement";
-            return Error::err_spanned(e, msg);
+            return Error::err_spanned(e, msg); // checked in tests/fail/expr/return.rs
         }
 
         // MyStruct { field: value }
@@ -539,14 +581,18 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         syn::Expr::Tuple(_) => {} // let the compiler generate the error
 
         // op expr
-        syn::Expr::Unary(syn::ExprUnary { expr, op, .. }) => {
+        syn::Expr::Unary(syn::ExprUnary { expr, op, attrs }) => {
             let original = state.add_var(*expr, "original", "original");
-            assert_condition = quote! { #op #original };
+            assert_condition = quote! { #(#attrs)* #op #original };
         }
 
         // unsafe { ... }
-        syn::Expr::Unsafe(syn::ExprUnsafe { block, .. }) => {
-            state.possibly_unsafe = quote! { unsafe };
+        syn::Expr::Unsafe(syn::ExprUnsafe {
+            block,
+            attrs,
+            unsafe_token,
+        }) => {
+            state.possibly_unsafe = quote! { #(#attrs)* #unsafe_token };
             return eval_block(block, state);
         }
 
@@ -627,15 +673,16 @@ fn recurse_else_branches(branch: syn::Expr, mut state: State) -> Result<TokenStr
         // else { ... }
         syn::Expr::Block(syn::ExprBlock { block, .. }) => {
             let body = eval_block(block, state)?;
-            Ok(quote! { else { #body } })
+            Ok(quote! { { #body } })
         }
 
         // else if cond { ... }
         syn::Expr::If(syn::ExprIf {
             cond,
-            else_branch: Some((_else, else_branch)),
+            else_branch: Some((else_token, else_branch)),
             then_branch,
-            ..
+            attrs,
+            if_token,
         }) => {
             let condition_str = printable_expr_string(&cond);
             let condition =
@@ -649,20 +696,20 @@ fn recurse_else_branches(branch: syn::Expr, mut state: State) -> Result<TokenStr
             let State { setup, .. } = state;
 
             Ok(quote! {
-                else {
+                {
                     #setup
-                    if #condition {
+                    #(#attrs)* #if_token #condition {
                         #then_branch
-                    } #else_branches
+                    } #else_token #else_branches
                 }
             })
         }
-        syn::Expr::If(_) => Ok(TokenStream::new()), // if without else: let the compiler generate the error
+        syn::Expr::If(_) => Ok(branch.to_token_stream()), // if without else: let the compiler generate the error
 
         _ => {
             // docs on syn::ExprIf (in 2.0.71): "The `else` branch expression may only be an `If` or `Block` expression."
             let msg = "parsing error: expected else block or if-else chain";
-            Error::err_spanned(branch, msg)
+            Error::err_spanned(branch, msg) // should not be reachable, thus not checked
         }
     }
 }

@@ -45,6 +45,10 @@ function assert_no_change {
         >&2 echo "Changes in ${DIR} detected, aborting"
         exit 1
     fi
+    if [[ -n "$(git ls-files --exclude-standard --others "${DIR}")" ]]; then
+        >&2 echo "Untracked files in tests/fail/ detected, aborting"
+        exit 1
+    fi
 }
 
 BASE_DIR="$(realpath "$(dirname "$0")")"
@@ -83,13 +87,13 @@ if [[ OVERWRITE -eq 1 ]]; then
     # There is however the problem that the stable and nightly versions might have different outputs. If they
     # are simply run one after the other, then the second one will overwrite the first one. To avoid this, we
     # use git to check if the files have changed after every step.
-    assert_no_change tests/fail # Check for initial changes that would skew the later checks
+    assert_no_change "tests/fail/**/*.stderr" # Check for initial changes that would skew the later checks
 
     try_silent cargo +stable test error_message_tests -- --ignored
-    assert_no_change tests/fail
+    assert_no_change "tests/fail/**/*.stderr"
 
     try_silent cargo +nightly test error_message_tests -- --ignored
-    assert_no_change tests/fail
+    assert_no_change "tests/fail/**/*.stderr"
 else
     try_silent cargo +stable test error_message_tests -- --ignored
     try_silent cargo +nightly test error_message_tests -- --ignored

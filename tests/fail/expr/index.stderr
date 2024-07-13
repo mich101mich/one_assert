@@ -1,0 +1,22 @@
+error[E0308]: mismatched types
+ --> tests/fail/expr/index.rs:2:25
+  |
+2 |     one_assert::assert!([1, 2][2 - 1]);             // wrong array type
+  |                         ^^^^^^^^^^^^^ expected `bool`, found integer
+
+error[E0277]: the type `[{integer}]` cannot be indexed by `String`
+ --> tests/fail/expr/index.rs:3:32
+  |
+3 |     one_assert::assert!([1, 2][String::from("a")]); // wrong index type
+  |                                ^^^^^^^^^^^^^^^^^ slice indices are of type `usize` or ranges of `usize`
+  |
+  = help: the trait `SliceIndex<[{integer}]>` is not implemented for `String`, which is required by `[{integer}; 2]: Index<_>`
+  = note: required for `[{integer}]` to implement `Index<String>`
+  = note: 1 redundant requirement hidden
+  = note: required for `[{integer}; 2]` to implement `Index<String>`
+
+error[E0608]: cannot index into a value of type `{integer}`
+ --> tests/fail/expr/index.rs:4:32
+  |
+4 |     one_assert::assert!((1 + 2)[0]);                // not an array
+  |                                ^^^

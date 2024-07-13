@@ -1,0 +1,23 @@
+error: incomplete expression: unexpected end of input, expected one of: identifier, `::`, `<`, `_`, literal, `const`, `ref`, `mut`, `&`, parentheses, square brackets, `..`, `const`
+ --> tests/fail/expr/let.rs:2:25
+  |
+2 |     one_assert::assert!(let);
+  |                         ^^^
+
+error: incomplete expression: expected `=`
+ --> tests/fail/expr/let.rs:3:25
+  |
+3 |     one_assert::assert!(let b);
+  |                         ^^^^^
+
+error: Expected a boolean expression, found a let statement
+ --> tests/fail/expr/let.rs:4:25
+  |
+4 |     one_assert::assert!(let b = true);
+  |                         ^^^^^^^^^^^^
+
+error: incomplete expression: unexpected end of input, expected an expression
+ --> tests/fail/expr/let.rs:5:25
+  |
+5 |     one_assert::assert!(let b = 1 +);
+  |                         ^^^^^^^^^^^

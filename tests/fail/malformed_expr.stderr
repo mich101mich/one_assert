@@ -1,14 +1,14 @@
-error: incomplete expression
+error: incomplete expression: unexpected end of input, expected an expression
  --> tests/fail/malformed_expr.rs:2:25
   |
 2 |     one_assert::assert!(1 ==);
   |                         ^^^^
 
-error: incomplete expression
- --> tests/fail/malformed_expr.rs:3:25
+error: Expression before the comma is incomplete: expected an expression
+ --> tests/fail/malformed_expr.rs:3:29
   |
 3 |     one_assert::assert!(1 ==, "hi");
-  |                         ^^^^^^^^^^
+  |                             ^
 
 error: expected an expression
  --> tests/fail/malformed_expr.rs:4:25

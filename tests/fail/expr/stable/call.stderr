@@ -1,0 +1,107 @@
+error[E0308]: mismatched types
+  --> tests/fail/expr/stable/call.rs:18:25
+   |
+2  |     fn test_fn() -> bool {
+   |     -------------------- function `test_fn` defined here
+...
+18 |     one_assert::assert!(test_fn);            // not called
+   |                         ^^^^^^^ expected `bool`, found fn item
+   |
+   = note: expected type `bool`
+           found fn item `fn() -> bool {test_fn}`
+help: use parentheses to call this function
+   |
+18 |     one_assert::assert!(test_fn());            // not called
+   |                                ++
+
+error[E0061]: this function takes 0 arguments but 1 argument was supplied
+  --> tests/fail/expr/stable/call.rs:19:25
+   |
+19 |     one_assert::assert!(test_fn(1));         // too many arguments
+   |                         ^^^^^^^ -
+   |                                 |
+   |                                 unexpected argument of type `{integer}`
+   |                                 help: remove the extra argument
+   |
+note: function defined here
+  --> tests/fail/expr/stable/call.rs:2:8
+   |
+2  |     fn test_fn() -> bool {
+   |        ^^^^^^^
+
+error[E0061]: this function takes 2 arguments but 1 argument was supplied
+  --> tests/fail/expr/stable/call.rs:20:25
+   |
+20 |     one_assert::assert!(param_fn(1));        // not enough arguments
+   |                         ^^^^^^^^--- an argument of type `i32` is missing
+   |
+note: function defined here
+  --> tests/fail/expr/stable/call.rs:5:8
+   |
+5  |     fn param_fn(a: i32, b: i32) -> bool {
+   |        ^^^^^^^^ ------  ------
+help: provide the argument
+   |
+20 |     one_assert::assert!(param_fn(1, /* i32 */));        // not enough arguments
+   |                                 ~~~~~~~~~~~~~~
+
+error[E0061]: this function takes 2 arguments but 3 arguments were supplied
+  --> tests/fail/expr/stable/call.rs:21:25
+   |
+21 |     one_assert::assert!(param_fn(1, 2, 3));  // too many arguments
+   |                         ^^^^^^^^     ---
+   |                                      | |
+   |                                      | unexpected argument of type `{integer}`
+   |                                      help: remove the extra argument
+   |
+note: function defined here
+  --> tests/fail/expr/stable/call.rs:5:8
+   |
+5  |     fn param_fn(a: i32, b: i32) -> bool {
+   |        ^^^^^^^^ ------  ------
+
+error[E0308]: arguments to this function are incorrect
+  --> tests/fail/expr/stable/call.rs:22:25
+   |
+22 |     one_assert::assert!(param_fn("a", "b")); // wrong type
+   |                         ^^^^^^^^ ---  --- expected `i32`, found `&str`
+   |                                  |
+   |                                  expected `i32`, found `&str`
+   |
+note: function defined here
+  --> tests/fail/expr/stable/call.rs:5:8
+   |
+5  |     fn param_fn(a: i32, b: i32) -> bool {
+   |        ^^^^^^^^ ------  ------
+
+error[E0308]: mismatched types
+  --> tests/fail/expr/stable/call.rs:23:25
+   |
+23 |     one_assert::assert!(curry());            // returned function not called
+   |                         ^^^^^^^ expected `bool`, found fn pointer
+   |
+   = note:    expected type `bool`
+           found fn pointer `fn(i32, i32) -> bool`
+help: use parentheses to call this function pointer
+   |
+23 |     one_assert::assert!(curry()(/* i32 */, /* i32 */));            // returned function not called
+   |                                ++++++++++++++++++++++
+
+error[E0277]: `fn() -> bool {test_fn}` doesn't implement `Debug`
+  --> tests/fail/expr/stable/call.rs:24:33
+   |
+2  |     fn test_fn() -> bool {
+   |        ------- consider calling this function
+...
+24 |     one_assert::assert!(call_fn(test_fn));   // fn pointer does not implement Debug
+   |                                 ^^^^^^^ `fn() -> bool {test_fn}` cannot be formatted using `{:?}` because it doesn't implement `Debug`
+   |
+   = help: the trait `Debug` is not implemented for fn item `fn() -> bool {test_fn}`
+   = help: use parentheses to call this function: `test_fn()`
+   = note: this error originates in the macro `$crate::__export::format_args` which comes from the expansion of the macro `one_assert::assert` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> tests/fail/expr/stable/call.rs:25:25
+   |
+25 |     one_assert::assert!(int_fn(1 + 1));           // wrong return type
+   |                         ^^^^^^^^^^^^^ expected `bool`, found `i32`

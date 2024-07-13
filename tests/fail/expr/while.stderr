@@ -1,0 +1,5 @@
+error: Expected a boolean expression, found a while loop
+ --> tests/fail/expr/while.rs:2:25
+  |
+2 |     one_assert::assert!(while false {});
+  |                         ^^^^^^^^^^^^^^

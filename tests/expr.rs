@@ -272,6 +272,57 @@ fn test_call() {
     arg  9: 0
     arg 10: 0"
     );
+
+    fn simple_true_fn() -> bool {
+        true
+    }
+    fn simple_false_fn() -> bool {
+        false
+    }
+    fn echo_fn(a: bool) -> bool {
+        a
+    }
+    fn curry_true() -> fn() -> bool {
+        simple_true_fn
+    }
+    fn curry_false() -> fn() -> bool {
+        simple_false_fn
+    }
+    fn curry_echo() -> fn(bool) -> bool {
+        echo_fn
+    }
+    fn curry_return(f: fn() -> bool) -> fn() -> bool {
+        f
+    }
+
+    one_assert::assert!(simple_true_fn());
+    one_assert::assert!(curry_true()());
+    one_assert::assert!(echo_fn(true));
+    one_assert::assert!(curry_echo()(true));
+    one_assert::assert!(curry_return(simple_true_fn)());
+
+    assert_throws!(
+        one_assert::assert!(simple_false_fn()),
+        "assertion `simple_false_fn()` failed"
+    );
+    assert_throws!(
+        one_assert::assert!(curry_false()()),
+        "assertion `curry_false() ()` failed"
+    );
+    assert_throws!(
+        one_assert::assert!(echo_fn(false)),
+        "assertion `echo_fn(false)` failed
+    arg 0: false"
+    );
+    assert_throws!(
+        one_assert::assert!(curry_echo()(false)),
+        "assertion `curry_echo() (false)` failed
+    arg 0: false"
+    );
+    assert_throws!(
+        one_assert::assert!(curry_return(simple_false_fn)()),
+        "assertion `curry_return(simple_false_fn) ()` failed"
+    ); // doesn't print args because the actual call is to `simple_false_fn`
 }
 
 #[test]
@@ -435,6 +486,18 @@ fn test_index() {
     );
 
     assert_throws!(one_assert::assert!(arr[2]), "assertion `arr [2]` failed");
+
+    let map = std::collections::HashMap::<&str, bool>::from_iter([("a", true), ("b", false)]);
+
+    let true_key = "a";
+    one_assert::assert!(map[true_key]);
+
+    let false_key = "b";
+    assert_throws!(
+        one_assert::assert!(map[false_key]),
+        r#"assertion `map [false_key]` failed
+    index: "b""#
+    );
 }
 
 // #[test]

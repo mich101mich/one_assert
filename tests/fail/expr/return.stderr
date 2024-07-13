@@ -1,0 +1,11 @@
+error: Expected a boolean expression, found a return statement
+ --> tests/fail/expr/return.rs:2:25
+  |
+2 |     one_assert::assert!(return);
+  |                         ^^^^^^
+
+error: Expected a boolean expression, found a return statement
+ --> tests/fail/expr/return.rs:4:29
+  |
+4 |         one_assert::assert!(return 1);
+  |                             ^^^^^^^^

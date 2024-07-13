@@ -142,12 +142,14 @@ fn test_crazy_nonsense() {
 #[ignore]
 fn error_message_tests() {
     let root = std::path::PathBuf::from("tests/fail");
-    let mut paths = vec![root.clone(), root.join("expr")];
+    let base_paths = vec![root.clone(), root.join("expr")];
 
     // Error Messages are different in nightly => Different .stderr files
     let nightly = rustc_version::version_meta().unwrap().channel == rustc_version::Channel::Nightly;
     let channel = if nightly { "nightly" } else { "stable" };
-    paths.push(root.join(channel));
+
+    let mut paths = base_paths.clone();
+    paths.extend(base_paths.iter().map(|p| p.join(channel)));
 
     let t = trybuild::TestCases::new();
     for mut path in paths {

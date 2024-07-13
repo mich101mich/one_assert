@@ -1,0 +1,16 @@
+error[E0308]: mismatched types
+ --> tests/fail/expr/loop.rs:2:32
+  |
+2 |     one_assert::assert!(loop { break });
+  |                                ^^^^^ expected `bool`, found `()`
+  |
+help: give the `break` a value of the expected type
+  |
+2 |     one_assert::assert!(loop { break false });
+  |                                      +++++
+
+error[E0308]: mismatched types
+ --> tests/fail/expr/loop.rs:3:38
+  |
+3 |     one_assert::assert!(loop { break 1 });
+  |                                      ^ expected `bool`, found integer

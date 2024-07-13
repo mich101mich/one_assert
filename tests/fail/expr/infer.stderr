@@ -1,0 +1,5 @@
+error: in expressions, `_` can only be used on the left-hand side of an assignment
+ --> tests/fail/expr/infer.rs:2:25
+  |
+2 |     one_assert::assert!(_);
+  |                         ^ `_` not allowed here

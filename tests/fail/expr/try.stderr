@@ -1,0 +1,15 @@
+error[E0277]: the `?` operator can only be applied to values that implement `Try`
+ --> tests/fail/expr/try.rs:2:25
+  |
+2 |     one_assert::assert!(true?);
+  |                         ^^^^^ the `?` operator cannot be applied to type `bool`
+  |
+  = help: the trait `Try` is not implemented for `bool`
+
+error[E0308]: `?` operator has incompatible types
+ --> tests/fail/expr/try.rs:3:25
+  |
+3 |     one_assert::assert!(Ok(1)?);
+  |                         ^^^^^^ expected `bool`, found integer
+  |
+  = note: `?` operator cannot convert from `{integer}` to `bool`

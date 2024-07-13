@@ -1,17 +1,12 @@
 #!/bin/bash
 
-OVERWRITE=0
-if [[ "$1" == "overwrite" ]]; then
-    OVERWRITE=1
-elif [[ -n "$1" ]]; then
-    echo "Usage: $0 [overwrite]"
-    exit 1
-fi
-
 set -e
 
-TMP_FILE="/tmp/one_assert_test_out.txt"
+########
+# functions
+########
 
+TMP_FILE="/tmp/one_assert_test_out.txt"
 function handle_output {
     rm -f "${TMP_FILE}"
     while IFS='' read -r line
@@ -46,12 +41,23 @@ function assert_no_change {
         exit 1
     fi
     if [[ -n "$(git ls-files --exclude-standard --others "${DIR}")" ]]; then
-        >&2 echo "Untracked files in tests/fail/ detected, aborting"
+        >&2 echo "Untracked files in ${DIR} detected, aborting"
         exit 1
     fi
 }
 
+########
+# setup
+########
 BASE_DIR="$(realpath "$(dirname "$0")")"
+
+OVERWRITE=0
+if [[ "$1" == "overwrite" ]]; then
+    OVERWRITE=1
+elif [[ -n "$1" ]]; then
+    echo "Usage: $0 [overwrite]"
+    exit 1
+fi
 
 MSRV=$(grep '^rust-version = ".*"$' "${BASE_DIR}/Cargo.toml" | sed -E 's/^rust-version = "(.*)"$/\1/')
 [[ -n "${MSRV}" ]]
@@ -64,15 +70,17 @@ MIN_VERSIONS_DIR="${OUT_DIRS}/min_versions"
 for dir in "${MSRV_DIR}" "${MIN_VERSIONS_DIR}"; do
     [[ -d "${dir}" ]] && continue
     mkdir -p "${dir}"
-    ln -s "${BASE_DIR}/Cargo.toml" "${dir}/Cargo.toml"
-    ln -s "${BASE_DIR}/src" "${dir}/src"
-    ln -s "${BASE_DIR}/tests" "${dir}/tests"
+    ln -s "../../Cargo.toml" "${dir}/Cargo.toml"
+    ln -s "../../src" "${dir}/src"
+    ln -s "../../tests" "${dir}/tests"
 done
 
 export RUSTFLAGS="-D warnings"
 export RUSTDOCFLAGS="-D warnings"
 
+########
 # main tests
+########
 cd "${BASE_DIR}"
 try_silent rustup update
 try_silent cargo update
@@ -102,20 +110,21 @@ try_silent cargo +nightly doc --no-deps
 try_silent cargo +nightly clippy -- -D warnings
 try_silent cargo +stable fmt --check
 
+########
 # minimum supported rust version
-(
-    cd "${MSRV_DIR}"
-    try_silent rustup install "${MSRV}"
-    try_silent cargo "+${MSRV}" test --tests # only run --tests, which excludes the doctests from Readme.md
-)
+########
+cd "${MSRV_DIR}"
+try_silent rustup install "${MSRV}"
+try_silent cargo "+${MSRV}" test --tests # only run --tests, which excludes the doctests from Readme.md
 
+########
 # minimum versions
-(
-    cd "${MIN_VERSIONS_DIR}"
-    try_silent cargo +nightly -Z minimal-versions update
+########
+cd "${MIN_VERSIONS_DIR}"
+try_silent cargo +nightly -Z minimal-versions update
 
-    try_silent cargo +stable test
-    try_silent cargo +nightly test
-)
+try_silent cargo +stable test
+try_silent cargo +nightly test
 
+########
 echo "All tests passed!"

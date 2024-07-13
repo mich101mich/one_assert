@@ -1,9 +1,15 @@
 //! # One Assert
 //!
+//! ### TL;DR
+//! Why have separate macros for `assert_eq` and `assert_ne` (and `assert_gt` etc. with other crates) when you
+//! can just get the same output with `assert!(a == b)` (or `assert!(a != b)`, `assert!(a > b)`, ...)?
+//! This crate provides a single `assert!` macro that analyzes the expression to provide more detailed output on failure.
+//!
 //! ### Introduction
 //!
 //! Rust's standard library provides the [`assert`](https://doc.rust-lang.org/std/macro.assert.html),
-//! [`assert_eq`](https://doc.rust-lang.org/std/macro.assert_eq.html) and [`assert_ne`](https://doc.rust-lang.org/std/macro.assert_ne.html).
+//! [`assert_eq`](https://doc.rust-lang.org/std/macro.assert_eq.html) and
+//! [`assert_ne`](https://doc.rust-lang.org/std/macro.assert_ne.html) macros.
 //! There are however some inconveniences with these, like how there are no specialization for other inequalities, like
 //! `assert_ge` for `>=` etc, or how the names only differ in one or two letters (`assert_eq`, `assert_ne`,
 //! `assert_ge`, `assert_gt`, ...) and are thus easy to mix up at a glance.
@@ -259,10 +265,8 @@ fn assert_internal(input: Args) -> Result<TokenStream> {
     }
 
     let mut state = State::new();
-    state.setup = quote! {
-        /// A wrapper type to create multi-token variables for span manipulation
-        struct __OneAssertWrapper<T>(T);
-    };
+    // A wrapper type to create multi-token variables for span manipulation
+    state.setup = quote! { struct __OneAssertWrapper<T>(T); };
     state.format_message = format!("assertion `{expr_str}` failed");
 
     if !format.is_empty() {
@@ -453,6 +457,9 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         // block parsing code to find all the `break` statements so that the error message can say
         // which one was triggered. This would be really useful info for the user, but it's a lot of effort
         // for something that probably nobody will ever see.
+        // Side note: Finding a `break` would actually help with the case where there are no breaks, because
+        // then the loop would just never return (`!`), so the compiler doesn't complain but the assertion
+        // makes no sense.
 
         // some_macro!(...)
         syn::Expr::Macro(_) => {} // not touching this
@@ -535,7 +542,7 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
             paren_token,
         }) => {
             let obj = state.add_var(*receiver, "object", "object");
-            let index_len = (args.len() - 1).to_string().len();
+            let index_len = (args.len().saturating_sub(1)).to_string().len();
             let out_args = args.into_iter().enumerate().map(|(i, arg)| {
                 state.add_var(arg, &format!("arg{i}"), &format!("arg {i:>index_len$}"))
             });
@@ -572,7 +579,11 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         }
 
         // MyStruct { field: value }
-        syn::Expr::Struct(_) => {} // let the compiler generate the error
+        syn::Expr::Struct(_) => {
+            // we generate our own error, because the compiler will suggest adding parentheses around the struct literal
+            let msg = "Expected a boolean expression, found a struct literal";
+            return Error::err_spanned(e, msg);
+        }
 
         // expr?
         syn::Expr::Try(_) => {} // might work if expr is a Result<bool> or similar, otherwise let the compiler generate the error

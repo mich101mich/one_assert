@@ -1,0 +1,17 @@
+error[E0308]: mismatched types
+ --> tests/fail/expr/range.rs:2:25
+  |
+2 |     one_assert::assert!(false..);
+  |                         ^^^^^^^ expected `bool`, found `RangeFrom<bool>`
+  |
+  = note: expected type `bool`
+           found struct `RangeFrom<bool>`
+
+error[E0308]: mismatched types
+ --> tests/fail/expr/range.rs:3:25
+  |
+3 |     one_assert::assert!(..=5);
+  |                         ^^^^ expected `bool`, found `RangeToInclusive<{integer}>`
+  |
+  = note: expected type `bool`
+           found struct `RangeToInclusive<{integer}>`

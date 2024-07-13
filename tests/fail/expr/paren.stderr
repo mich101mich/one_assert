@@ -1,0 +1,5 @@
+error[E0308]: mismatched types
+ --> tests/fail/expr/paren.rs:2:26
+  |
+2 |     one_assert::assert!((1));
+  |                          ^ expected `bool`, found integer

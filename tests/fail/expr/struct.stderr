@@ -1,0 +1,5 @@
+error: Expected a boolean expression, found a struct literal
+ --> tests/fail/expr/struct.rs:5:25
+  |
+5 |     one_assert::assert!(S { b: true });
+  |                         ^^^^^^^^^^^^^

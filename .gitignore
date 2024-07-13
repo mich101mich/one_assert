@@ -1,3 +1,4 @@
 /target/
 /test_dirs/
 Cargo.lock
+/.vscode/settings.json

@@ -89,6 +89,30 @@ fn test_one_assert() {
 }
 
 #[test]
+fn test_one_assert_message() {
+    let x = 1;
+    assert_throws!(
+        one_assert::assert!(x == 2, "x={}", x),
+        "assertion `x == 2` failed: x=1
+     left: 1
+    right: 2",
+    );
+
+    let x = true;
+    assert_throws!(
+        one_assert::assert!(x && false, "x={}", x),
+        "assertion `x && false` failed: x=true
+     left: true
+    right: false",
+    );
+}
+
+#[test]
+fn test_misc() {
+    one_assert::assert!(!"abc123".replace(|c: char| c.is_alphabetic(), "").is_empty());
+}
+
+#[test]
 fn test_single_evaluation() {
     fn create_caller() -> impl FnMut() -> bool {
         let mut called = false;

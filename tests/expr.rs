@@ -356,16 +356,69 @@ fn test_if() {
     let y = 2;
     one_assert::assert!(if x == 1 { y == 2 } else { y == 3 });
 
-    //     assert_throws!( // TODO: implement
-    //         one_assert::assert!(if x == 2 { true } else { y == 3 }),
-    //         "assertion `if x == 2 { true } else { y == 3 }` failed
-    //   caused by: else block `y == 3` evaluated to false
-    //      left: 2
-    //     right: 3
-    //   caused by: if condition `x == 2` evaluated to false
-    //      left: 1
-    //     right: 2"
-    //     );
+    assert_throws!(
+        one_assert::assert!(if x == 1 { false } else { y == 3 }),
+        "assertion `if x == 1 { false } else { y == 3 }` failed
+    condition `x == 1`: true
+  caused by: block return assertion `false` failed"
+    );
+
+    assert_throws!(
+        one_assert::assert!(if x == 2 { true } else { y == 3 }),
+        "assertion `if x == 2 { true } else { y == 3 }` failed
+    condition `x == 2`: false
+  caused by: block return assertion `y == 3` failed
+     left: 2
+    right: 3"
+    );
+
+    assert_throws!(
+        one_assert::assert!(if x == 0 {
+            true
+        } else if x == 1 {
+            y == x
+        } else if x == 2 {
+            false
+        } else {
+            unreachable!()
+        }),
+        "assertion `if x == 0 { true } else if x == 1 { y == x } else if x == 2 { false } else
+{ unreachable! () }` failed
+    condition `x == 0`: false
+    condition `x == 1`: true
+  caused by: block return assertion `y == x` failed
+     left: 2
+    right: 1"
+    );
+
+    assert_throws!(
+        one_assert::assert!(if x == 0 {
+            true
+        } else if x == 5 {
+            y == x
+        } else if false {
+            true
+        } else if x == 2 {
+            false
+        } else {
+            if x == 1 {
+                y == 3
+            } else {
+                false
+            }
+        }),
+        "assertion `if x == 0 { true } else if x == 5 { y == x } else if false { true } else if x
+== 2 { false } else { if x == 1 { y == 3 } else { false } }` failed
+    condition `x == 0`: false
+    condition `x == 5`: false
+     condition `false`: false
+    condition `x == 2`: false
+  caused by: block return assertion `if x == 1 { y == 3 } else { false }` failed
+    condition `x == 1`: true
+  caused by: block return assertion `y == 3` failed
+     left: 2
+    right: 3"
+    );
 }
 
 #[test]

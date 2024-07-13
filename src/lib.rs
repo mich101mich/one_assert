@@ -147,7 +147,6 @@ pub fn assert(input: TokenStream1) -> TokenStream1 {
     }
 }
 
-#[derive(Clone)]
 struct State {
     /// Code that sets up the variables for the assertion
     setup: TokenStream,
@@ -172,6 +171,17 @@ impl State {
             variables: vec![],
             possibly_unsafe: TokenStream::new(),
             next_ident_id: 0,
+        }
+    }
+
+    fn fork(&self) -> Self {
+        Self {
+            setup: TokenStream::new(),                   // initial setup is shared
+            format_message: self.format_message.clone(), // format message is printed by fork
+            dynamic_args: self.dynamic_args.clone(),     // args are tied to the format message
+            variables: self.variables.clone(),           // keep any non-resolved variables
+            possibly_unsafe: TokenStream::new(),         // only the outermost block needs unsafe
+            next_ident_id: self.next_ident_id,           // identifiers should be unique
         }
     }
 
@@ -353,10 +363,39 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         }
 
         // if cond { ... } else { ... }
-        syn::Expr::If(syn::ExprIf { .. }) => {
-            // let condition = state.add_var(*cond, "condition");
-            // TODO: add branching recursive calls here
+        syn::Expr::If(syn::ExprIf {
+            cond,
+            then_branch,
+            else_branch: Some((_else, else_branch)),
+            ..
+        }) => {
+            let condition_str = printable_expr_string(&cond);
+            let condition =
+                state.add_var(*cond, "condition", &format!("condition `{condition_str}`"));
+
+            let then_branch = eval_block(then_branch, state.fork())?;
+            let else_branches = recurse_else_branches(*else_branch, state.fork())?;
+
+            state.resolve_variables(); // only resolve variables after the recursive calls so that the forks can align the conditions
+
+            let State {
+                setup,
+                possibly_unsafe,
+                ..
+            } = state;
+
+            let output = quote! {
+                #[allow(unused)]
+                #possibly_unsafe {
+                    #setup
+                    if #condition {
+                        #then_branch
+                    } #else_branches
+                }
+            };
+            return Ok(output);
         }
+        syn::Expr::If(_) => {} // if without else: let the compiler generate the error
 
         // expr[index]
         syn::Expr::Index(syn::ExprIndex { index, expr, .. }) => {
@@ -402,8 +441,6 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
             let match_expr = state.add_var(*expr, "matched", "matched value");
 
             state.resolve_variables();
-            let setup = std::mem::take(&mut state.setup);
-            let possibly_unsafe = std::mem::take(&mut state.possibly_unsafe);
 
             let mut arms_output = TokenStream::new();
             for arm in arms {
@@ -417,7 +454,7 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
 
                 let pattern = quote! { #pat #guard };
 
-                let mut arm_state = state.clone();
+                let mut arm_state = state.fork();
 
                 arm_state.add_cause(&format!(
                     "match {expr_str} entered arm `{}` where assertion `{}` failed",
@@ -433,6 +470,12 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
                     }
                 });
             }
+
+            let State {
+                setup,
+                possibly_unsafe,
+                ..
+            } = state;
 
             let output = quote! {
                 #[allow(unused)]
@@ -577,6 +620,51 @@ fn eval_block(mut block: syn::Block, mut state: State) -> Result<TokenStream> {
     }
 
     eval_expr(expr, state)
+}
+
+fn recurse_else_branches(branch: syn::Expr, mut state: State) -> Result<TokenStream> {
+    match branch {
+        // else { ... }
+        syn::Expr::Block(syn::ExprBlock { block, .. }) => {
+            let body = eval_block(block, state)?;
+            Ok(quote! { else { #body } })
+        }
+
+        // else if cond { ... }
+        syn::Expr::If(syn::ExprIf {
+            cond,
+            else_branch: Some((_else, else_branch)),
+            then_branch,
+            ..
+        }) => {
+            let condition_str = printable_expr_string(&cond);
+            let condition =
+                state.add_var(*cond, "condition", &format!("condition `{condition_str}`"));
+
+            let then_branch = eval_block(then_branch, state.fork())?;
+            let else_branches = recurse_else_branches(*else_branch, state.fork())?;
+
+            state.resolve_variables(); // only resolve variables after the recursive calls so that the forks can align the conditions
+
+            let State { setup, .. } = state;
+
+            Ok(quote! {
+                else {
+                    #setup
+                    if #condition {
+                        #then_branch
+                    } #else_branches
+                }
+            })
+        }
+        syn::Expr::If(_) => Ok(TokenStream::new()), // if without else: let the compiler generate the error
+
+        _ => {
+            // docs on syn::ExprIf (in 2.0.71): "The `else` branch expression may only be an `If` or `Block` expression."
+            let msg = "parsing error: expected else block or if-else chain";
+            Error::err_spanned(branch, msg)
+        }
+    }
 }
 
 fn printable_expr_string(expr: &impl quote::ToTokens) -> String {

@@ -630,6 +630,7 @@ fn test_methodcall() {
         one_assert::assert!(s.contains("world")),
         r#"assertion `s.contains("world")` failed
     object: "hello"
+    method: "contains"
      arg 0: "world""#
     );
 }
@@ -724,32 +725,51 @@ fn test_try() {
 
 #[test]
 fn test_unary() {
-    macro_rules! test_unary_op_to_bool {
-        ($op:tt, $op_name:ident, $op_fn_name:ident) => {{
-            #[derive(Debug)]
-            struct OpToBool(bool);
-            impl std::ops::$op_name for OpToBool {
-                type Output = bool;
-                fn $op_fn_name(self) -> bool {
-                    self.0
-                }
+    {
+        #[derive(Debug)]
+        struct OpToBool(bool);
+        impl std::ops::Not for OpToBool {
+            type Output = bool;
+            fn not(self) -> bool {
+                self.0
             }
+        }
 
-            let a = OpToBool(true);
-            one_assert::assert!($op a);
+        let a = OpToBool(true);
+        one_assert::assert!(!a);
 
-            let b = OpToBool(false);
-            assert_throws!(
-                one_assert::assert!($op b),
-                concat!(
-                    "assertion `", stringify!($op), " b` failed
-    original: OpToBool(false)"
-                )
-            );
-        }}
+        let b = OpToBool(false);
+        assert_throws!(
+            one_assert::assert!(!b),
+            concat!(
+                "assertion `! b` failed
+    assertion negated: true"
+            )
+        );
     }
-    test_unary_op_to_bool!(!, Not, not);
-    test_unary_op_to_bool!(-, Neg, neg);
+
+    {
+        #[derive(Debug)]
+        struct OpToBool(bool);
+        impl std::ops::Neg for OpToBool {
+            type Output = bool;
+            fn neg(self) -> bool {
+                self.0
+            }
+        }
+
+        let a = OpToBool(true);
+        one_assert::assert!(-a);
+
+        let b = OpToBool(false);
+        assert_throws!(
+            one_assert::assert!(-b),
+            concat!(
+                "assertion `- b` failed
+    original: OpToBool(false)"
+            )
+        );
+    }
 
     {
         #[derive(Debug)]

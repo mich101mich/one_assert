@@ -4,19 +4,8 @@ error[E0423]: expected value, found module `std::vec`
 2 |     one_assert::assert!(std::vec);
   |                         ^^^^^^^^ not a value
 
-error[E0423]: expected value, found struct `std::vec::Vec`
+error[E0308]: mismatched types
  --> tests/fail/expr/path.rs:3:25
   |
-3 |     one_assert::assert!(std::vec::Vec);
-  |                         ^^^^^^^^^^^^^
-  |
- ::: $RUST/alloc/src/vec/mod.rs
-  |
-  | pub struct Vec<T, #[unstable(feature = "allocator_api", issue = "32838")] A: Allocator = Global> {
-  | ------------------------------------------------------------------------------------------------ `std::vec::Vec` defined here
-
-error[E0308]: mismatched types
- --> tests/fail/expr/path.rs:4:25
-  |
-4 |     one_assert::assert!(std::f32::consts::PI);
+3 |     one_assert::assert!(std::f32::consts::PI);
   |                         ^^^^^^^^^^^^^^^^^^^^ expected `bool`, found `f32`

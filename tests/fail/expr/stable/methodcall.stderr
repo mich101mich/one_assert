@@ -4,29 +4,8 @@ error[E0308]: mismatched types
 2 |     one_assert::assert!("".to_string().len());
   |                         ^^^^^^^^^^^^^^^^^^^^ expected `bool`, found `usize`
 
-error[E0061]: this method takes 0 arguments but 1 argument was supplied
- --> tests/fail/expr/stable/methodcall.rs:3:28
-  |
-3 |     one_assert::assert!("".len(1));
-  |                            ^^^ -
-  |                                |
-  |                                unexpected argument of type `{integer}`
-  |                                help: remove the extra argument
-  |
-note: method defined here
- --> $RUST/core/src/str/mod.rs
-  |
-  |     pub const fn len(&self) -> usize {
-  |                  ^^^
-
-error[E0308]: mismatched types
- --> tests/fail/expr/stable/methodcall.rs:3:25
-  |
-3 |     one_assert::assert!("".len(1));
-  |                         ^^^^^^^^^ expected `bool`, found `usize`
-
 error[E0689]: can't call method `len` on ambiguous numeric type `{integer}`
- --> tests/fail/expr/stable/methodcall.rs:4:27
+ --> tests/fail/expr/stable/methodcall.rs:3:27
   |
-4 |     one_assert::assert!(1.len());
+3 |     one_assert::assert!(1.len());
   |                           ^^^

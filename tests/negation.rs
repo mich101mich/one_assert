@@ -676,8 +676,7 @@ fn test_negated_methodcall() {
         one_assert::assert!(!s.contains("ell")),
         r#"assertion `! s.contains("ell")` failed
     assertion negated: true
-               object: "hello"
-               method: "contains"
+                 self: "hello"
                 arg 0: "ell""#
     );
 }

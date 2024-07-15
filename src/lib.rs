@@ -1,3 +1,19 @@
+#![deny(
+    missing_docs,
+    missing_debug_implementations,
+    trivial_casts,
+    trivial_numeric_casts,
+    unsafe_code,
+    unstable_features,
+    unused_import_braces,
+    unused_qualifications,
+    rustdoc::broken_intra_doc_links,
+    rustdoc::private_intra_doc_links,
+    rustdoc::missing_crate_level_docs,
+    rustdoc::invalid_codeblock_attributes,
+    rustdoc::bare_urls
+)]
+
 //! # One Assert
 //!
 //! ### TL;DR
@@ -78,15 +94,52 @@
 //! );
 //! ```
 //!
-//! ### Features
+//! ### Examples
+//! ```
+//! # macro_rules! catch_panic {
+//! #     ($block: block) => {{
+//! #         let error = std::panic::catch_unwind(move || $block).unwrap_err();
+//! #         error
+//! #             .downcast_ref::<&'static str>()
+//! #             .map(|s| s.to_string())
+//! #             .unwrap_or_else(|| *error.downcast::<String>().unwrap())
+//! #     }};
+//! # }
+//! let x = 1;
+//! let msg = catch_panic!({ one_assert::assert!(x > 2); });
+//! assert_eq!(msg, "assertion `x > 2` failed
+//!      left: 1
+//!     right: 2"
+//! );
 //!
-//! - copy AddsToBool example
+//! let msg = catch_panic!({ one_assert::assert!(x != 1, "x ({}) should not be 1", x); });
+//! assert_eq!(msg, "assertion `x != 1` failed: x (1) should not be 1
+//!      left: 1
+//!     right: 1"
+//! );
+//!
+//! let s = "Hello World";
+//! let msg = catch_panic!({ one_assert::assert!(s.starts_with("hello")); });
+//! assert_eq!(msg, r#"assertion `s.starts_with("hello")` failed
+//!      self: "Hello World"
+//!     arg 0: "hello""#
+//! );
+//! ```
 //!
 //! ### Limitations
-//! - everything has to be debug
-//! - everything has to be debug-printed REGARDLESS of assertion success or failure
-//!   - reason: Actual expression might move the values, so we can't just store them and print them later
-//!   - result: Don't use this in performance critical code
+//! - **Several Components need to implement [`Debug`]**
+//!   - The macro will take whatever part of the expression is considered useful and debug print it.
+//!     This means that those parts need to implement [`Debug`].
+//!   - What is printed as part of any given expression type is subject to change, so it is recommended
+//!     to only use this in code where pretty much everything implements `Debug`.
+//! - **`Debug` printing happens even if the assertion passes**
+//!   - Because this macro prints more than just the two sides of an `==` or `!=` comparison, it has to
+//!     deal with the fact that some values are moved during the evaluation of the expression. This means
+//!     that the values have to be printed in advance.
+//!   - Consequence: **Don't use this macro in performance-critical code**.
+//!   - Note however, that the expression and each part of it is only **evaluated** once.
+//!     - (Though it is also worth noting that fail-fast operators like `&&` might normally only evaluate
+//!       the left side and stop, but with this macro it will always evaluate both sides)
 
 use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::{Span, TokenStream};
@@ -144,6 +197,23 @@ impl syn::parse::Parse for Args {
     }
 }
 
+/// The main macro that is used to check a condition and panic if it is false.
+///
+/// # Syntax
+/// ```text
+/// assert!(condition: expression);
+/// assert!(condition: expression, message: format_string, args...: format_args);
+/// ```
+/// Parameters:
+/// - `condition`: The condition that should be checked. If it evaluates to `false`, the assertion fails.
+///   Can be any expression that evaluates to `bool`.
+/// - `message`: An optional message that is displayed if the assertion fails. This message can contain `{}`
+///   placeholders for dynamic arguments. See [`format_args`] for more information.
+/// - `args`: Arguments that are only evaluated if the assertion fails. These arguments are passed to
+///   `format_args` to replace the `{}` placeholders in the message.
+///
+/// # Examples
+/// See the crate-level documentation for examples.
 #[proc_macro]
 pub fn assert(input: TokenStream1) -> TokenStream1 {
     let input = syn::parse_macro_input!(input as Args);
@@ -543,15 +613,7 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
             dot_token,
             paren_token,
         }) => {
-            let obj = state.add_var(*receiver, "object", "object");
-            state.add_var(
-                syn::Expr::Lit(syn::ExprLit {
-                    attrs: vec![],
-                    lit: syn::Lit::Str(syn::LitStr::new(&method.to_string(), Span::call_site())),
-                }),
-                "method",
-                "method",
-            );
+            let obj = state.add_var(*receiver, "object", "self");
             let index_len = (args.len().saturating_sub(1)).to_string().len();
             let out_args = args.into_iter().enumerate().map(|(i, arg)| {
                 state.add_var(arg, &format!("arg{i}"), &format!("arg {i:>index_len$}"))
@@ -792,7 +854,7 @@ fn recurse_else_branches(branch: syn::Expr, state: State) -> Result<TokenStream>
     }
 }
 
-fn printable_expr_string(expr: &impl quote::ToTokens) -> String {
+fn printable_expr_string(expr: &impl ToTokens) -> String {
     expr.to_token_stream()
         .to_string()
         .replace('{', "{{")

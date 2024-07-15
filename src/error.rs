@@ -1,9 +1,11 @@
+#![allow(dead_code)]
+
 use proc_macro2::{Span, TokenStream};
 use std::fmt::Display;
 
-pub struct Error(TokenStream);
+pub(crate) struct Error(TokenStream);
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub(crate) type Result<T> = std::result::Result<T, Error>;
 
 impl Error {
     pub fn new<T: Display>(span: Span, message: T) -> Self {
@@ -23,7 +25,7 @@ impl Error {
     }
 }
 
-pub struct ErrorBuilder(TokenStream);
+pub(crate) struct ErrorBuilder(TokenStream);
 
 impl ErrorBuilder {
     fn new() -> Self {

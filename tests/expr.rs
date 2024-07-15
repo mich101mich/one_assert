@@ -629,9 +629,8 @@ fn test_methodcall() {
     assert_throws!(
         one_assert::assert!(s.contains("world")),
         r#"assertion `s.contains("world")` failed
-    object: "hello"
-    method: "contains"
-     arg 0: "world""#
+     self: "hello"
+    arg 0: "world""#
     );
 }
 

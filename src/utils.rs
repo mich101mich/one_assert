@@ -13,7 +13,7 @@ use crate::*;
 /// spanned expression be spanned with the second part of the source span. The compiler only looks
 /// at the start and end of the span and underlines everything in between, so this works.
 #[derive(Copy, Clone)]
-pub struct FullSpan(Span, Span);
+pub(crate) struct FullSpan(Span, Span);
 
 impl FullSpan {
     pub fn from_span(span: Span) -> Self {
@@ -36,7 +36,7 @@ impl FullSpan {
     }
 }
 
-pub enum FieldIdent {
+pub(crate) enum FieldIdent {
     Named(syn::Ident),
     Index(proc_macro2::Literal),
 }
@@ -65,7 +65,7 @@ impl std::fmt::Display for FieldIdent {
 }
 
 /// Format a list of items as a comma-separated list, with "or" before the last item.
-pub fn list_items<T>(items: &[T], mut display: impl FnMut(&T) -> String) -> String {
+pub(crate) fn list_items<T>(items: &[T], mut display: impl FnMut(&T) -> String) -> String {
     match items {
         [] => String::new(),
         [x] => display(x),
@@ -84,7 +84,7 @@ pub fn list_items<T>(items: &[T], mut display: impl FnMut(&T) -> String) -> Stri
 }
 
 /// Extension trait for [`TokenStream`] that allows setting the span of all tokens in the stream.
-pub trait TokenStreamExt {
+pub(crate) trait TokenStreamExt {
     fn set_span(&mut self, span: Span);
     fn with_span(self, span: Span) -> Self;
 }

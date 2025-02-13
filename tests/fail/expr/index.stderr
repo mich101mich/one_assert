@@ -10,7 +10,7 @@ error[E0277]: the type `[{integer}]` cannot be indexed by `String`
 3 |     one_assert::assert!([1, 2][String::from("a")]); // wrong index type
   |                                ^^^^^^^^^^^^^^^^^ slice indices are of type `usize` or ranges of `usize`
   |
-  = help: the trait `SliceIndex<[{integer}]>` is not implemented for `String`, which is required by `[{integer}; 2]: Index<_>`
+  = help: the trait `SliceIndex<[{integer}]>` is not implemented for `String`
   = note: required for `[{integer}]` to implement `Index<String>`
   = note: 1 redundant requirement hidden
   = note: required for `[{integer}; 2]` to implement `Index<String>`

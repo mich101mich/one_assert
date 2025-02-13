@@ -18,22 +18,24 @@ error[E0061]: this function takes 0 arguments but 1 argument was supplied
   --> tests/fail/expr/stable/call.rs:19:25
    |
 19 |     one_assert::assert!(test_fn(1));         // too many arguments
-   |                         ^^^^^^^ -
-   |                                 |
-   |                                 unexpected argument of type `{integer}`
-   |                                 help: remove the extra argument
+   |                         ^^^^^^^ - unexpected argument of type `{integer}`
    |
 note: function defined here
   --> tests/fail/expr/stable/call.rs:2:8
    |
 2  |     fn test_fn() -> bool {
    |        ^^^^^^^
+help: remove the extra argument
+   |
+19 -     one_assert::assert!(test_fn(1));         // too many arguments
+19 +     one_assert::assert!(test_fn());         // too many arguments
+   |
 
 error[E0061]: this function takes 2 arguments but 1 argument was supplied
   --> tests/fail/expr/stable/call.rs:20:25
    |
 20 |     one_assert::assert!(param_fn(1));        // not enough arguments
-   |                         ^^^^^^^^--- an argument of type `i32` is missing
+   |                         ^^^^^^^^--- argument #2 of type `i32` is missing
    |
 note: function defined here
   --> tests/fail/expr/stable/call.rs:5:8
@@ -49,16 +51,18 @@ error[E0061]: this function takes 2 arguments but 3 arguments were supplied
   --> tests/fail/expr/stable/call.rs:21:25
    |
 21 |     one_assert::assert!(param_fn(1, 2, 3));  // too many arguments
-   |                         ^^^^^^^^     ---
-   |                                      | |
-   |                                      | unexpected argument of type `{integer}`
-   |                                      help: remove the extra argument
+   |                         ^^^^^^^^       - unexpected argument #3 of type `{integer}`
    |
 note: function defined here
   --> tests/fail/expr/stable/call.rs:5:8
    |
 5  |     fn param_fn(a: i32, b: i32) -> bool {
    |        ^^^^^^^^ ------  ------
+help: remove the extra argument
+   |
+21 -     one_assert::assert!(param_fn(1, 2, 3));  // too many arguments
+21 +     one_assert::assert!(param_fn(1, 2));  // too many arguments
+   |
 
 error[E0308]: arguments to this function are incorrect
   --> tests/fail/expr/stable/call.rs:22:25

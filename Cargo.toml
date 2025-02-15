@@ -10,7 +10,7 @@ readme = "Readme.md"
 license = "MIT OR Apache-2.0"
 keywords = ["testing", "assert", "macro", "test", "assertion"]
 categories = ["development-tools::testing"]
-exclude = ["/.vscode/*", "/.gitignore", "/.github/*", "/*.bat", "/*.sh"]
+exclude = ["/.vscode/*", "/.git*", "/*.bat", "/*.sh", "/submodules/"]
 
 [lib]
 proc-macro = true

@@ -140,6 +140,9 @@
 //!   - Note however, that the expression and each part of it is only **evaluated** once.
 //!     - (Though it is also worth noting that fail-fast operators like `&&` might normally only evaluate
 //!       the left side and stop, but with this macro it will always evaluate both sides)
+//!
+//! ### Changelog
+//! See [CHANGELOG.md](https://github.com/mich101mich/one_assert/blob/dev/Readme.md)
 
 use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::{Span, TokenStream};

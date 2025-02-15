@@ -35,29 +35,30 @@ error[E0061]: this function takes 2 arguments but 1 argument was supplied
   --> tests/fail/expr/nightly/call.rs:20:25
    |
 20 |     one_assert::assert!(param_fn(1));        // not enough arguments
-   |                         ^^^^^^^^--- an argument of type `i32` is missing
+   |                         ^^^^^^^^--- argument #2 of type `i32` is missing
    |
 note: function defined here
   --> tests/fail/expr/nightly/call.rs:5:8
    |
 5  |     fn param_fn(a: i32, b: i32) -> bool {
-   |        ^^^^^^^^ ------  ------
+   |        ^^^^^^^^         ------
 help: provide the argument
    |
-20 |     one_assert::assert!(param_fn(1, /* i32 */));        // not enough arguments
-   |                                 ~~~~~~~~~~~~~~
+20 -     one_assert::assert!(param_fn(1));        // not enough arguments
+20 +     one_assert::assert!(param_fn(1, /* i32 */));        // not enough arguments
+   |
 
 error[E0061]: this function takes 2 arguments but 3 arguments were supplied
   --> tests/fail/expr/nightly/call.rs:21:25
    |
 21 |     one_assert::assert!(param_fn(1, 2, 3));  // too many arguments
-   |                         ^^^^^^^^       - unexpected argument of type `{integer}`
+   |                         ^^^^^^^^       - unexpected argument #3 of type `{integer}`
    |
 note: function defined here
   --> tests/fail/expr/nightly/call.rs:5:8
    |
 5  |     fn param_fn(a: i32, b: i32) -> bool {
-   |        ^^^^^^^^ ------  ------
+   |        ^^^^^^^^
 help: remove the extra argument
    |
 21 -     one_assert::assert!(param_fn(1, 2, 3));  // too many arguments

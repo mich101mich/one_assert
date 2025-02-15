@@ -231,6 +231,7 @@ fn test_call() {
     arg 2: \"world\""
     );
 
+    #[allow(clippy::too_many_arguments)]
     fn ten_arg_fn(a0: u8, a1: u8, _: u8, _: u8, _: u8, _: u8, _: u8, _: u8, _: u8, _: u8) -> bool {
         a0 == a1
     }
@@ -252,6 +253,7 @@ fn test_call() {
     arg 9: 0"
     );
 
+    #[allow(clippy::too_many_arguments)]
     #[rustfmt::skip]
     fn eleven_arg_fn(a0: u8, a1: u8, _: u8, _: u8, _: u8, _: u8, _: u8, _: u8, _: u8, _: u8, _: u8) -> bool {
         a0 == a1
@@ -326,6 +328,7 @@ fn test_call() {
 }
 
 #[test]
+#[allow(clippy::unnecessary_cast)]
 fn test_cast() {
     one_assert::assert!(true as bool);
 
@@ -515,6 +518,7 @@ fn test_lit() {
 }
 
 #[test]
+#[allow(clippy::never_loop)]
 fn test_loop() {
     one_assert::assert!(loop {
         break true;
@@ -793,6 +797,7 @@ fn test_unary() {
 }
 
 #[test]
+#[allow(clippy::transmute_int_to_bool, clippy::missing_transmute_annotations)]
 fn test_unsafe() {
     one_assert::assert!(unsafe { std::mem::transmute(1u8) });
 

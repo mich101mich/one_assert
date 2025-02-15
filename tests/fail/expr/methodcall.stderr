@@ -1,11 +1,11 @@
 error[E0308]: mismatched types
- --> tests/fail/expr/nightly/methodcall.rs:2:25
+ --> tests/fail/expr/methodcall.rs:2:25
   |
 2 |     one_assert::assert!("".to_string().len());
   |                         ^^^^^^^^^^^^^^^^^^^^ expected `bool`, found `usize`
 
 error[E0689]: can't call method `len` on ambiguous numeric type `{integer}`
- --> tests/fail/expr/nightly/methodcall.rs:3:27
+ --> tests/fail/expr/methodcall.rs:3:27
   |
 3 |     one_assert::assert!(1.len());
   |                           ^^^

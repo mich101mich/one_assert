@@ -83,3 +83,10 @@ Limitations
   - Consequence: **Don’t use this macro in performance-critical code.**
   - Note however, that the expression and each part of it is only **evaluated** once.
     - (Though it is worth noting that fail-fast operators like `&&` might normally only evaluate the left side and stop, but with this macro it will always evaluate both sides)
+
+## Changelog
+See [Changelog.md](Changelog.md)
+
+## License
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
+[MIT license](LICENSE-MIT) at your option.

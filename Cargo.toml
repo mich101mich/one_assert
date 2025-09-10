@@ -1,6 +1,6 @@
 [package]
 name = "one_assert"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 authors = ["mich101mich <mich101mich@gmail.com>"]
 rust-version = "1.70.0"

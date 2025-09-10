@@ -142,7 +142,7 @@
 //!       the left side and stop, but with this macro it will always evaluate both sides)
 //!
 //! ### Changelog
-//! See [CHANGELOG.md](https://github.com/mich101mich/one_assert/blob/dev/Readme.md)
+//! See [Changelog.md](https://github.com/mich101mich/one_assert/blob/master/Changelog.md)
 
 use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::{Span, TokenStream};
@@ -226,14 +226,13 @@ pub fn assert(input: TokenStream1) -> TokenStream1 {
     }
 }
 
-#[derive(Clone)]
-enum ExprModifier {
-    /// `! expr`
-    Negated(syn::token::Not),
-    /// `( expr )`
-    Parenthesized(syn::token::Paren),
-    /// `{ expr }`
-    Blocked(syn::token::Brace),
+struct Variable {
+    /// Name of the variable
+    name: String,
+    /// Debug-printed value
+    debug_value: TokenStream,
+    /// Flag if the variable might be moved by the condition
+    might_move: bool,
 }
 
 struct State {
@@ -244,11 +243,11 @@ struct State {
     /// Arguments that are only evaluated if the assertion fails
     dynamic_args: Vec<TokenStream>,
     /// Pairs of (variable name, debug-printed value) that are used in the assertion and should be printed in the error message
-    variables: Vec<(String, TokenStream)>,
+    variables: Vec<Variable>,
     /// Contains `unsafe` if the assertion should be wrapped in an unsafe block
     possibly_unsafe: TokenStream,
-    /// List of modifiers that need to be applied to the expression
-    modifiers: Vec<(Vec<syn::Attribute>, ExprModifier)>,
+    /// Flag if the expression is negated
+    is_negated: bool,
     /// Counter for creating unique identifiers
     next_ident_id: usize,
 }
@@ -261,22 +260,8 @@ impl State {
             dynamic_args: vec![],
             variables: vec![],
             possibly_unsafe: TokenStream::new(),
-            modifiers: vec![],
+            is_negated: false,
             next_ident_id: 0,
-        }
-    }
-
-    /// Create a sub-state that can be used in branches
-    #[rustfmt::skip]
-    fn fork(&self) -> Self {
-        Self {
-            setup: TokenStream::new(),                   // initial setup is shared
-            format_message: self.format_message.clone(), // format message is printed by fork
-            dynamic_args: self.dynamic_args.clone(),     // args are tied to the format message
-            variables: self.variables.clone(),           // keep any non-resolved variables
-            possibly_unsafe: TokenStream::new(),         // unsafe is only needed on the outermost block
-            modifiers: self.modifiers.clone(),           // negation has to be applied at the innermost check
-            next_ident_id: self.next_ident_id,           // identifiers should be unique
         }
     }
 
@@ -287,13 +272,38 @@ impl State {
         syn::Ident::new(&name, Span::call_site())
     }
 
-    /// Create a variable from an expression and store it in the setup code
-    fn add_var(&mut self, expr: syn::Expr, identifier: &str, display: &str) -> TokenStream {
+    /// Create a variable from an expression and store it in the setup code.
+    ///
+    /// It is assumed that the expression moves the value, so it needs to be debug printed in advance
+    fn add_moving_var(&mut self, expr: syn::Expr, identifier: &str, display: &str) -> TokenStream {
+        self.add_var_internal(expr, identifier, display, true)
+    }
+
+    /// Create a variable from an expression and store it in the setup code.
+    ///
+    /// The variable is only used in a borrowed form, so we can debug print only when needed
+    fn add_borrowed_var(
+        &mut self,
+        expr: syn::Expr,
+        identifier: &str,
+        display: &str,
+    ) -> TokenStream {
+        self.add_var_internal(expr, identifier, display, false)
+    }
+
+    fn add_var_internal(
+        &mut self,
+        expr: syn::Expr,
+        identifier: &str,
+        display: &str,
+        might_move: bool,
+    ) -> TokenStream {
         let var_access = if matches!(expr, syn::Expr::Path(_)) {
             // could be a variable of a type that doesn't implement Copy, so we can't store it by value.
             // Instead, we just use the variable directly.
             expr.to_token_stream()
         } else {
+            // any other expression. Compute the result once and store it
             let var_ident = self.create_ident(identifier);
             self.setup.extend(quote! {
                 let #var_ident = __OneAssertWrapper(#expr);
@@ -304,14 +314,22 @@ impl State {
             expr_span.apply(quote! { #var_ident }, quote! { .0 })
         };
 
-        let var_debug_str = self.create_ident(&format!("{identifier}_str"));
-        self.setup.extend(quote! {
-            let #var_debug_str = ::std::format!("{:?}", #var_access);
-        });
+        let debug_value = if might_move {
+            let var_debug_str = self.create_ident(&format!("{identifier}_str"));
+            self.setup.extend(quote! {
+                let #var_debug_str = ::std::format!("{:?}", #var_access);
+            });
+            var_debug_str.to_token_stream()
+        } else {
+            var_access.clone()
+        };
 
         // store variable for now instead of printing it immediately, so that all the variables can be aligned
-        self.variables
-            .push((display.to_owned(), var_debug_str.to_token_stream()));
+        self.variables.push(Variable {
+            name: display.to_owned(),
+            debug_value,
+            might_move,
+        });
 
         var_access
     }
@@ -321,13 +339,19 @@ impl State {
         let max_name_len = self
             .variables
             .iter()
-            .map(|(name, _)| name.len())
+            .map(|Variable { name, .. }| name.len())
             .max()
             .unwrap_or(0);
 
-        for (name, var_debug_str) in self.variables.drain(..) {
-            self.format_message += &format!("\n    {name:>max_name_len$}: {{}}");
-            self.dynamic_args.push(var_debug_str.to_token_stream());
+        for Variable {
+            name,
+            debug_value,
+            might_move,
+        } in self.variables.drain(..)
+        {
+            self.format_message += &format!("\n    {name:>max_name_len$}: ");
+            self.format_message += if might_move { "{}" } else { "{:?}" };
+            self.dynamic_args.push(debug_value);
         }
     }
 
@@ -338,7 +362,7 @@ impl State {
 }
 
 fn assert_internal(input: Args) -> Result<TokenStream> {
-    let Args { expr, format } = input;
+    let Args { mut expr, format } = input;
 
     let expr_str = printable_expr_string(&expr);
 
@@ -362,7 +386,13 @@ fn assert_internal(input: Args) -> Result<TokenStream> {
             .push(quote! { ::std::format_args!(#format) });
     }
 
-    // eval_expr(expr, state)
+    // inline any parentheses and invisible groups as they are not necessary
+    while let syn::Expr::Paren(syn::ExprParen { expr: inner, .. })
+    | syn::Expr::Group(syn::ExprGroup { expr: inner, .. }) = expr
+    {
+        expr = *inner;
+    }
+
     let output = eval_expr(expr, state)?;
     // println!();
     // println!();
@@ -400,15 +430,64 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
             right,
             attrs,
         }) => {
-            let lhs = state.add_var(*left, "lhs", "left");
-            let rhs = state.add_var(*right, "rhs", "right");
-            assert_condition = quote! { #(#attrs)* #lhs #op #rhs };
+            match op {
+                // logic operators => preserve fail-fast behavior where expressions like `!vec.empty() && vec[0].ok()` work
+                syn::BinOp::And(and_and) => todo!(),
+                syn::BinOp::Or(or_or) => todo!(),
+
+                // comparison operators, handle as expected
+                syn::BinOp::Eq(_)
+                | syn::BinOp::Lt(_)
+                | syn::BinOp::Le(_)
+                | syn::BinOp::Ne(_)
+                | syn::BinOp::Ge(_)
+                | syn::BinOp::Gt(_) => {
+                    let lhs = state.add_borrowed_var(*left, "lhs", "left");
+                    let rhs = state.add_borrowed_var(*right, "rhs", "right");
+                    assert_condition = quote! { #(#attrs)* #lhs #op #rhs };
+                }
+
+                // operators that might return a bool, but might move the inputs
+                syn::BinOp::Add(_)
+                | syn::BinOp::Sub(_)
+                | syn::BinOp::Mul(_)
+                | syn::BinOp::Div(_)
+                | syn::BinOp::Rem(_)
+                | syn::BinOp::BitXor(_)
+                | syn::BinOp::BitAnd(_)
+                | syn::BinOp::BitOr(_)
+                | syn::BinOp::Shl(_)
+                | syn::BinOp::Shr(_) => {
+                    let lhs = state.add_moving_var(*left, "lhs", "left");
+                    let rhs = state.add_moving_var(*right, "rhs", "right");
+                    assert_condition = quote! { #(#attrs)* #lhs #op #rhs };
+                }
+
+                // operators that don't return anything
+                syn::BinOp::AddAssign(_)
+                | syn::BinOp::SubAssign(_)
+                | syn::BinOp::MulAssign(_)
+                | syn::BinOp::DivAssign(_)
+                | syn::BinOp::RemAssign(_)
+                | syn::BinOp::BitXorAssign(_)
+                | syn::BinOp::BitAndAssign(_)
+                | syn::BinOp::BitOrAssign(_)
+                | syn::BinOp::ShlAssign(_)
+                | syn::BinOp::ShrAssign(_) => {
+                    // we generate our own error, because the compiler just says "expected bool, found ()"
+                    let msg = "Expected a boolean expression, found an assignment";
+                    return Error::err_spanned(op, msg); // checked in tests/fail/expr/binary.rs
+                }
+
+                // unknown operator, keep as-is
+                _ => todo!(),
+            }
+            // TODO: check if '||' or '&&'
+            // TODO: check if move op
         }
 
         // { ... }
-        syn::Expr::Block(syn::ExprBlock { block, attrs, .. }) => {
-            return eval_block(block, attrs, state)
-        }
+        syn::Expr::Block(_) => {} // We could check the condition at the end of the block, but really, this shouldn't be done in the assert
 
         // break
         syn::Expr::Break(_) => {
@@ -426,7 +505,7 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         }) if !args.is_empty() => {
             let index_len = (args.len() - 1).to_string().len();
             let out_args = args.into_iter().enumerate().map(|(i, arg)| {
-                state.add_var(arg, &format!("arg{i}"), &format!("arg {i:>index_len$}"))
+                state.add_moving_var(arg, &format!("arg{i}"), &format!("arg {i:>index_len$}"))
             });
 
             // output: `quote! { #(#attrs)* #func ( #(#out_args),* ) }` except we want to use the original parentheses for span purposes
@@ -446,11 +525,7 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         syn::Expr::Closure(_) => {} // let the compiler generate the error
 
         // const { ... }
-        syn::Expr::Const(syn::ExprConst { block, attrs, .. }) => {
-            return eval_block(block, attrs, state);
-        }
-        // the way this is structured means you can technically assert a non-const block while pretending it's a const block,
-        // but then again, why do you have a const block in an assert?
+        syn::Expr::Const(_) => {} // same as Expr::Block
 
         // continue
         syn::Expr::Continue(_) => {
@@ -471,24 +546,15 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
             return Error::err_spanned(e, msg); // checked in tests/fail/expr/forloop.rs
         }
 
-        // group with invisible delimiters?
+        // group with invisible delimiters
         syn::Expr::Group(syn::ExprGroup { expr, .. }) => {
+            // usually generated by resolving another macro. To us, it is just an expression
             return eval_expr(*expr, state);
         }
 
         // if cond { ... } else { ... }
-        syn::Expr::If(branch) => {
-            let possibly_unsafe = std::mem::take(&mut state.possibly_unsafe);
-            let output = setup_if(branch, state)?;
-
-            let output = quote! {
-                #[allow(unused)]
-                #possibly_unsafe {
-                    #output
-                }
-            };
-            return Ok(output);
-        }
+        syn::Expr::If(_) => {} // we could analyze the condition and/or blocks, but that is a bit excessive.
+        // If you want better output, put the assert in the if and not the other way around.
 
         // expr[index]
         syn::Expr::Index(syn::ExprIndex {
@@ -498,7 +564,7 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
             bracket_token,
         }) => {
             if !matches!(*index, syn::Expr::Lit(_)) {
-                let index = state.add_var(*index, "index", "index");
+                let index = state.add_moving_var(*index, "index", "index");
                 // output: `quote! { #(#attrs)* #expr [#index] }` except we want to use the original brackets for span purposes
                 assert_condition = quote! { #(#attrs)* #expr };
                 bracket_token.surround(&mut assert_condition, |out| index.to_tokens(out));
@@ -540,71 +606,7 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         syn::Expr::Macro(_) => {} // not touching this
 
         // match expr { ... }
-        syn::Expr::Match(syn::ExprMatch {
-            arms,
-            expr,
-            attrs,
-            match_token,
-            brace_token,
-        }) => {
-            let expr_str = printable_expr_string(&expr);
-            let match_expr = state.add_var(*expr, "matched", "matched value");
-
-            state.resolve_variables();
-
-            let mut arms_output = TokenStream::new();
-            for arm in arms {
-                let syn::Arm {
-                    pat,
-                    guard,
-                    body,
-                    attrs,
-                    fat_arrow_token,
-                    ..
-                } = arm;
-
-                let guard = guard
-                    .map(|(if_token, expr)| quote! { #if_token #expr })
-                    .unwrap_or_default();
-
-                let pattern = quote! { #pat #guard };
-
-                let mut arm_state = state.fork();
-
-                arm_state.add_cause(&format!(
-                    "match {expr_str} entered arm `{}` where assertion `{}` failed",
-                    printable_expr_string(&pattern),
-                    printable_expr_string(&body)
-                ));
-
-                let assert_eval = eval_expr(*body, arm_state)?;
-
-                arms_output.extend(quote! {
-                    #(#attrs)* #pattern #fat_arrow_token {
-                        #assert_eval
-                    }
-                });
-            }
-
-            // output: `quote! { #(#attrs)* #match_token #match_expr { #arms_output } }` except we want to use the original braces for span purposes
-            let mut inner_tokens = quote! { #(#attrs)* #match_token #match_expr };
-            brace_token.surround(&mut inner_tokens, |out| out.extend(arms_output));
-
-            let State {
-                setup,
-                possibly_unsafe,
-                ..
-            } = state;
-
-            let output = quote! {
-                #[allow(unused)]
-                #possibly_unsafe {
-                    #setup
-                    #inner_tokens
-                }
-            };
-            return Ok(output);
-        }
+        syn::Expr::Match(_) => {} // we could check which variant matched etc. etc., but that is excessive for an assert
 
         // receiver.method(args...)
         syn::Expr::MethodCall(syn::ExprMethodCall {
@@ -616,10 +618,10 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
             dot_token,
             paren_token,
         }) => {
-            let obj = state.add_var(*receiver, "object", "self");
+            let obj = state.add_moving_var(*receiver, "object", "self");
             let index_len = (args.len().saturating_sub(1)).to_string().len();
             let out_args = args.into_iter().enumerate().map(|(i, arg)| {
-                state.add_var(arg, &format!("arg{i}"), &format!("arg {i:>index_len$}"))
+                state.add_moving_var(arg, &format!("arg{i}"), &format!("arg {i:>index_len$}"))
             });
 
             // output: `quote! { #(attrs)* #obj #dot_token #method #turbofish ( #(#out_args),* ) }` except we want to use the original parentheses for span purposes
@@ -630,15 +632,8 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         }
 
         // (expr)
-        syn::Expr::Paren(syn::ExprParen {
-            expr,
-            paren_token,
-            attrs,
-            ..
-        }) => {
-            state
-                .modifiers
-                .push((attrs, ExprModifier::Parenthesized(paren_token)));
+        syn::Expr::Paren(syn::ExprParen { expr, .. }) => {
+            // extra parenthesis are redundant and will be stripped
             return eval_expr(*expr, state);
         }
 
@@ -677,38 +672,31 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         // !expr
         syn::Expr::Unary(syn::ExprUnary {
             expr,
-            op: syn::UnOp::Not(not_token),
+            op: syn::UnOp::Not(_),
             attrs,
         }) => {
+            if !attrs.is_empty() {
+                return Error::err_spanned(
+                    &attrs[0],
+                    "Attributes are not supported in this position",
+                );
+            }
+
             // praying that people didn't override the `Not` operator for their types
-            state
-                .modifiers
-                .push((attrs, ExprModifier::Negated(not_token)));
-            state.add_var(
-                syn::Expr::Lit(syn::ExprLit {
-                    attrs: vec![],
-                    lit: syn::Lit::Bool(syn::LitBool::new(true, Span::call_site())),
-                }),
-                "negated",
-                "assertion negated",
-            );
+            state.is_negated = !state.is_negated;
+            state.add_cause(&format!(
+                "expression {} evaluated to {}",
+                printable_expr_string(&expr),
+                state.is_negated
+            ));
+
             return eval_expr(*expr, state);
         }
         // op expr
-        syn::Expr::Unary(syn::ExprUnary { expr, op, attrs }) => {
-            let original = state.add_var(*expr, "original", "original");
-            assert_condition = quote! { #(#attrs)* #op #original };
-        }
+        syn::Expr::Unary(_) => {} // just leave it as-is
 
         // unsafe { ... }
-        syn::Expr::Unsafe(syn::ExprUnsafe {
-            block,
-            attrs,
-            unsafe_token,
-        }) => {
-            state.possibly_unsafe = quote! { #(#attrs)* #unsafe_token };
-            return eval_block(block, vec![], state);
-        }
+        syn::Expr::Unsafe(_) => {} // Same as Expr::Block
 
         // something
         syn::Expr::Verbatim(_) => {} // even syn doesn't know what this is, so we can't do anything with it
@@ -733,23 +721,12 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         format_message,
         dynamic_args,
         possibly_unsafe,
-        modifiers,
+        is_negated,
         ..
     } = state;
 
-    for (attrs, modifier) in modifiers.into_iter().rev() {
-        let inner = std::mem::take(&mut assert_condition);
-        match modifier {
-            ExprModifier::Negated(not_token) => {
-                assert_condition = quote! { #(#attrs)* #not_token #inner };
-            }
-            ExprModifier::Parenthesized(parentheses) => {
-                parentheses.surround(&mut assert_condition, |out| inner.to_tokens(out));
-            }
-            ExprModifier::Blocked(braces) => {
-                braces.surround(&mut assert_condition, |out| inner.to_tokens(out));
-            }
-        }
+    if is_negated {
+        assert_condition = quote! { !#assert_condition };
     }
 
     let output = quote! {
@@ -766,95 +743,6 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         }
     };
     Ok(output)
-}
-
-fn eval_block(
-    mut block: syn::Block,
-    attrs: Vec<syn::Attribute>,
-    mut state: State,
-) -> Result<TokenStream> {
-    state.resolve_variables();
-
-    let original_tokens = quote! { #(#attrs)* #block };
-
-    let Some(syn::Stmt::Expr(expr, None)) = block.stmts.pop() else {
-        let State {
-            setup,
-            possibly_unsafe,
-            ..
-        } = state;
-        return Ok(quote! {
-            #[allow(unused)]
-            #possibly_unsafe {
-                #setup
-                if #original_tokens {}
-            }
-        });
-    };
-
-    let condition_str = printable_expr_string(&expr);
-    state.add_cause(&format!("block return assertion `{condition_str}` failed"));
-
-    state
-        .modifiers
-        .push((attrs, ExprModifier::Blocked(block.brace_token)));
-
-    for stmt in block.stmts {
-        stmt.to_tokens(&mut state.setup);
-    }
-
-    eval_expr(expr, state)
-}
-
-fn setup_if(branch: syn::ExprIf, mut state: State) -> Result<TokenStream> {
-    let syn::ExprIf {
-        cond,
-        then_branch,
-        attrs,
-        if_token,
-        else_branch: Some((else_token, else_branch)),
-    } = branch
-    else {
-        return Ok(branch.to_token_stream()); // if without else: let the compiler generate the error
-    };
-
-    let condition_str = printable_expr_string(&cond);
-    let condition = state.add_var(*cond, "condition", &format!("condition `{condition_str}`"));
-
-    let then_branch = eval_block(then_branch, vec![], state.fork())?;
-    let else_branches = recurse_else_branches(*else_branch, state.fork())?;
-
-    state.resolve_variables(); // only resolve variables after the recursive calls so that the forks can align the conditions
-
-    let State { setup, .. } = state;
-
-    Ok(quote! {
-        {
-            #setup
-            #(#attrs)* #if_token #condition {
-                #then_branch
-            } #else_token #else_branches
-        }
-    })
-}
-
-fn recurse_else_branches(branch: syn::Expr, state: State) -> Result<TokenStream> {
-    match branch {
-        // else { ... }
-        syn::Expr::Block(syn::ExprBlock { block, attrs, .. }) => {
-            let body = eval_block(block, attrs, state)?;
-            Ok(quote! { { #body } })
-        }
-
-        // else if cond { ... }
-        syn::Expr::If(expr) => setup_if(expr, state),
-
-        _ => {
-            // docs on syn::ExprIf (in 2.0.71): "The `else` branch expression may only be an `If` or `Block` expression."
-            let msg = "parsing error: expected else block or if-else chain";
-            Error::err_spanned(branch, msg) // should not be reachable, thus not checked
-        }
-    }
 }
 
 fn printable_expr_string(expr: &impl ToTokens) -> String {

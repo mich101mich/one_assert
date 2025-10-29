@@ -54,7 +54,7 @@ impl ToTokens for FieldIdent {
         }
     }
 }
-impl std::fmt::Display for FieldIdent {
+impl Display for FieldIdent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             FieldIdent::Named(ident) => write!(f, "{ident}"),

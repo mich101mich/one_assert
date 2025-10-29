@@ -144,16 +144,24 @@
 //! ### Changelog
 //! See [Changelog.md](https://github.com/mich101mich/one_assert/blob/master/Changelog.md)
 
-use std::{borrow::Borrow, fmt::Write};
+use std::{
+    borrow::Borrow,
+    fmt::{Display, Write},
+};
 
 use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, ToTokens};
 
 mod error;
+mod format_message;
+mod not;
 mod utils;
+mod variables;
 
 use error::*;
+use format_message::*;
+use variables::*;
 
 /// Parsed arguments for the `assert` macro
 struct Args {
@@ -228,149 +236,8 @@ pub fn assert(input: TokenStream1) -> TokenStream1 {
     }
 }
 
-struct Variable {
-    /// Name of the variable
-    name: String,
-    /// Debug-printed value
-    debug_value: TokenStream,
-    /// Flag if the variable might be moved by the condition
-    might_move: bool,
-}
-
-struct State {
-    /// Code that sets up the variables for the assertion
-    setup: TokenStream,
-    /// The message that is displayed if the assertion fails. Must contain one `{}` for each dynamic argument
-    format_message: String,
-    /// Arguments that are only evaluated if the assertion fails
-    dynamic_args: Vec<TokenStream>,
-    /// Pairs of (variable name, debug-printed value) that are used in the assertion and should be printed in the error message
-    variables: Vec<Variable>,
-    /// Contains `unsafe` if the assertion should be wrapped in an unsafe block
-    possibly_unsafe: TokenStream,
-    /// Optional `!`-token if the condition is negated
-    not_token: Option<syn::token::Not>,
-    /// Counter for creating unique identifiers
-    next_ident_id: usize,
-}
-
-impl State {
-    fn new() -> Self {
-        Self {
-            setup: TokenStream::new(),
-            format_message: String::new(),
-            dynamic_args: vec![],
-            variables: vec![],
-            possibly_unsafe: TokenStream::new(),
-            not_token: None,
-            next_ident_id: 0,
-        }
-    }
-
-    /// Ensure that there is no conflict between identifiers in the generated code by adding an incrementing number to each identifier
-    fn create_ident(&mut self, name: &str) -> syn::Ident {
-        let name = format!("__one_assert_{}_{}", name, self.next_ident_id);
-        self.next_ident_id += 1;
-        syn::Ident::new(&name, Span::call_site())
-    }
-
-    /// Create a variable from an expression and store it in the setup code.
-    ///
-    /// It is assumed that the expression moves the value, so it needs to be debug printed in advance
-    fn add_moving_var(
-        &mut self,
-        expr: impl Borrow<syn::Expr>,
-        identifier: &str,
-        display: &str,
-    ) -> TokenStream {
-        self.add_var_internal(expr, identifier, display, true)
-    }
-
-    /// Create a variable from an expression and store it in the setup code.
-    ///
-    /// The variable is only used in a borrowed form, so we can debug print only when needed
-    fn add_borrowed_var(
-        &mut self,
-        expr: impl Borrow<syn::Expr>,
-        identifier: &str,
-        display: &str,
-    ) -> TokenStream {
-        self.add_var_internal(expr, identifier, display, false)
-    }
-
-    fn add_var_internal(
-        &mut self,
-        expr: impl Borrow<syn::Expr>,
-        identifier: &str,
-        display: &str,
-        might_move: bool,
-    ) -> TokenStream {
-        let expr = expr.borrow();
-        let var_access = if matches!(expr, syn::Expr::Path(_)) {
-            // could be a variable of a type that doesn't implement Copy, so we can't store it by value.
-            // Instead, we just use the variable directly.
-            expr.to_token_stream()
-        } else {
-            // any other expression. Compute the result once and store it
-            let var_ident = self.create_ident(identifier);
-            self.setup.extend(quote! {
-                let #var_ident = __OneAssertWrapper(#expr);
-            });
-
-            // See note at the end of the file for an explanation on the span manipulation here
-            let expr_span = utils::FullSpan::from_spanned(&expr);
-            expr_span.apply(quote! { #var_ident }, quote! { .0 })
-        };
-
-        let debug_value = if might_move {
-            let var_debug_str = self.create_ident(&format!("{identifier}_str"));
-            self.setup.extend(quote! {
-                let #var_debug_str = ::std::format!("{:?}", #var_access);
-            });
-            var_debug_str.to_token_stream()
-        } else {
-            var_access.clone()
-        };
-
-        // store variable for now instead of printing it immediately, so that all the variables can be aligned
-        self.variables.push(Variable {
-            name: display.to_owned(),
-            debug_value,
-            might_move,
-        });
-
-        var_access
-    }
-
-    /// Add a `Name: Value` block for all currently stored variables to the format message
-    fn resolve_variables(&mut self) {
-        let max_name_len = self
-            .variables
-            .iter()
-            .map(|Variable { name, .. }| name.len())
-            .max()
-            .unwrap_or(0);
-
-        for Variable {
-            name,
-            debug_value,
-            might_move,
-        } in self.variables.drain(..)
-        {
-            write!(self.format_message, "\n    {name:>max_name_len$}: ").unwrap();
-            self.format_message += if might_move { "{}" } else { "{:?}" };
-            self.dynamic_args.push(debug_value);
-        }
-    }
-
-    /// Adds a "caused by" message to the format message
-    fn add_cause(&mut self, cause: &str) {
-        write!(self.format_message, "\n  caused by: {cause}").unwrap();
-    }
-}
-
 fn assert_internal(input: Args) -> Result<TokenStream> {
-    let Args { mut expr, format } = input;
+    let Args { expr, format } = input;
 
     let expr_str = printable_expr_string(&expr);
 
@@ -382,37 +249,37 @@ fn assert_internal(input: Args) -> Result<TokenStream> {
         });
     }
 
-    let mut state = State::new();
+    let mut setup = TokenStream::new();
+    let mut format_message = FormatMessage::new();
     // A wrapper type to create multi-token variables for span manipulation
-    state.setup = quote! { struct __OneAssertWrapper<T>(T); };
-    state.format_message = format!("assertion `{expr_str}` failed");
+    setup.extend(quote! { struct __OneAssertWrapper<T>(T); });
+    format_message.add_text(format!("assertion `{expr_str}` failed"));
 
     if !format.is_empty() {
-        state.format_message += ": {}";
-        state
-            .dynamic_args
-            .push(quote! { ::std::format_args!(#format) });
+        format_message.add_placeholder(": {}", quote! { ::std::format_args!(#format) });
     }
 
-    // inline any parentheses and invisible groups as they are not necessary
-    while let syn::Expr::Paren(syn::ExprParen { expr: inner, .. })
-    | syn::Expr::Group(syn::ExprGroup { expr: inner, .. }) = expr
-    {
-        expr = *inner;
-    }
-
-    let output = eval_expr(expr, state)?;
-    // println!();
-    // println!();
-    // println!("{}", output);
-    // println!();
-    // println!();
+    let output = eval_expr(expr, setup, format_message)?;
+    // println!("\n\n\n{}\n\n\n", output);
     Ok(output)
 }
 
 #[allow(clippy::match_same_arms)] // every arm needs its own reasoning and consideration
-fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
+fn eval_expr(
+    mut e: syn::Expr,
+    mut setup: TokenStream,
+    mut format_message: FormatMessage,
+) -> Result<TokenStream> {
     let mut assert_condition = e.to_token_stream();
+    let mut variables = Variables::new();
+
+    // inline any parentheses and invisible groups as they are not necessary
+    while let syn::Expr::Paren(syn::ExprParen { expr: inner, .. })
+    | syn::Expr::Group(syn::ExprGroup { expr: inner, .. }) = e
+    {
+        e = *inner;
+    }
+
     match e {
         // [a, b, c, d]
         syn::Expr::Array(_) => {} // let the compiler generate the error
@@ -441,39 +308,8 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         }) => {
             match op {
                 // logic operators => preserve fail-fast behavior where expressions like `!vec.empty() && vec[0].ok()` work
-                syn::BinOp::And(_) => {
-                    // `&&` logic: if first is true, evaluate second. Otherwise skip second
-                    state.resolve_variables();
-
-                    let State {
-                        setup,
-                        format_message,
-                        dynamic_args,
-                        possibly_unsafe,
-                        not_token,
-                        ..
-                    } = state;
-
-                    if let Some(not_token) = not_token {
-                        assert_condition = quote! { #not_token ( #assert_condition ) };
-                    }
-
-                    let output = quote! {
-                        #[allow(unused)]
-                        #possibly_unsafe {
-                            #setup
-                            if #assert_condition {
-                                // using an empty if instead of `!(#expression)` to avoid messing with the spans in `expression`.
-                                // And to produce a better error: "expected bool, found <type>"
-                                // instead of: "no unary operator '!' implemented for <type>"
-                            } else {
-                                ::std::panic!(#format_message, #(#dynamic_args),*);
-                            }
-                        }
-                    };
-                    return Ok(output);
-                }
-                syn::BinOp::Or(_) => todo!(),
+                syn::BinOp::And(_) => return Ok(resolve_and(setup, format_message, left, right)),
+                syn::BinOp::Or(_) => return Ok(resolve_or(setup, format_message, left, right)),
 
                 // comparison operators, handle as expected
                 syn::BinOp::Eq(_)
@@ -482,8 +318,8 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
                 | syn::BinOp::Ne(_)
                 | syn::BinOp::Ge(_)
                 | syn::BinOp::Gt(_) => {
-                    let lhs = state.add_borrowed_var(left, "lhs", "left");
-                    let rhs = state.add_borrowed_var(right, "rhs", "right");
+                    let lhs = variables.add_borrowed_var(left, "lhs", "left");
+                    let rhs = variables.add_borrowed_var(right, "rhs", "right");
                     assert_condition = quote! { #(#attrs)* #lhs #op #rhs };
                 }
 
@@ -498,8 +334,8 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
                 | syn::BinOp::BitOr(_)
                 | syn::BinOp::Shl(_)
                 | syn::BinOp::Shr(_) => {
-                    let lhs = state.add_moving_var(left, "lhs", "left");
-                    let rhs = state.add_moving_var(right, "rhs", "right");
+                    let lhs = variables.add_moving_var(left, "lhs", "left");
+                    let rhs = variables.add_moving_var(right, "rhs", "right");
                     assert_condition = quote! { #(#attrs)* #lhs #op #rhs };
                 }
 
@@ -543,7 +379,11 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         }) if !args.is_empty() => {
             let index_len = (args.len() - 1).to_string().len();
             let out_args = args.iter().enumerate().map(|(i, arg)| {
-                state.add_moving_var(arg, &format!("arg{i}"), &format!("arg {i:>index_len$}"))
+                variables.add_moving_var(
+                    arg,
+                    format_args!("arg{i}"),
+                    format_args!("arg {i:>index_len$}"),
+                )
             });
 
             // output: `quote! { #(#attrs)* #func ( #(#out_args),* ) }` except we want to use the original parentheses for span purposes
@@ -585,13 +425,12 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         }
 
         // group with invisible delimiters
-        syn::Expr::Group(syn::ExprGroup { expr, .. }) => {
-            // usually generated by resolving another macro. To us, it is just an expression
-            return eval_expr(*expr, state);
-        }
+        syn::Expr::Group(_) => unreachable!(), // inlined at the start of the function
 
         // if cond { ... } else { ... }
-        syn::Expr::If(_) => {} // we could analyze the condition and/or blocks, but that is a bit excessive.
+        syn::Expr::If(_) => {
+            // TODO: We should at least check the condition to say which block executed...
+        } // we could analyze the condition and/or blocks, but that is a bit excessive.
         // If you want better output, put the assert in the if and not the other way around.
 
         // expr[index]
@@ -602,7 +441,7 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
             bracket_token,
         }) => {
             if !matches!(*index, syn::Expr::Lit(_)) {
-                let index = state.add_moving_var(index, "index", "index");
+                let index = variables.add_moving_var(index, "index", "index");
                 // output: `quote! { #(#attrs)* #expr [#index] }` except we want to use the original brackets for span purposes
                 assert_condition = quote! { #(#attrs)* #expr };
                 bracket_token.surround(&mut assert_condition, |out| index.to_tokens(out));
@@ -656,10 +495,14 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
             dot_token,
             paren_token,
         }) => {
-            let obj = state.add_moving_var(receiver, "object", "self");
+            let obj = variables.add_moving_var(receiver, "object", "self");
             let index_len = (args.len().saturating_sub(1)).to_string().len();
             let out_args = args.iter().enumerate().map(|(i, arg)| {
-                state.add_moving_var(arg, &format!("arg{i}"), &format!("arg {i:>index_len$}"))
+                variables.add_moving_var(
+                    arg,
+                    format_args!("arg{i}"),
+                    format_args!("arg {i:>index_len$}"),
+                )
             });
 
             // output: `quote! { #(attrs)* #obj #dot_token #method #turbofish ( #(#out_args),* ) }` except we want to use the original parentheses for span purposes
@@ -670,10 +513,7 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         }
 
         // (expr)
-        syn::Expr::Paren(syn::ExprParen { expr, .. }) => {
-            // extra parenthesis are redundant and will be stripped
-            return eval_expr(*expr, state);
-        }
+        syn::Expr::Paren(_) => unreachable!(), // inlined at the start of the function
 
         // some::path::<of>::stuff
         syn::Expr::Path(_) => {} // might be a constant of type bool, otherwise let the compiler generate the error
@@ -713,26 +553,7 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
             op: syn::UnOp::Not(not_token),
             attrs,
         }) => {
-            if !attrs.is_empty() {
-                return Error::err_spanned(
-                    &attrs[0],
-                    "Attributes are not supported in this position",
-                );
-            }
-
-            let expr_str = printable_expr_string(&expr);
-
-            // praying that people didn't override the `Not` operator for their types
-            if state.not_token.is_none() {
-                state.not_token = Some(not_token);
-                state.add_cause(&format!("expression {expr_str} evaluated to true"));
-            } else {
-                // double negation cancels out
-                state.not_token = None;
-                state.add_cause(&format!("expression {expr_str} evaluated to false"));
-            }
-
-            return eval_expr(*expr, state);
+            return not::eval_not_expr(*expr, setup, format_message, not_token, attrs);
         }
         // op expr
         syn::Expr::Unary(_) => {} // just leave it as-is
@@ -756,38 +577,80 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
                 // syn::Expr::Yield
     }
 
-    state.resolve_variables();
+    variables.resolve_variables(&mut setup, &mut format_message);
 
-    let State {
-        setup,
-        format_message,
-        dynamic_args,
-        possibly_unsafe,
-        not_token,
-        ..
-    } = state;
+    Ok(quote! {{
+        #setup
+        if #assert_condition {
+            // using an empty if instead of `!(#expression)` to avoid messing with the spans in `expression`.
+            // And to produce a better error: "expected bool, found <type>"
+            // instead of: "no unary operator '!' implemented for <type>"
+        } else {
+            ::std::panic!(#format_message);
+        }
+    }})
+}
 
-    if let Some(not_token) = not_token {
-        assert_condition = quote! { #not_token ( #assert_condition ) };
-    }
+fn resolve_and(
+    setup: TokenStream,
+    format_message: FormatMessage,
+    left: impl Borrow<syn::Expr>,
+    right: impl Borrow<syn::Expr>,
+) -> TokenStream {
+    let left = left.borrow();
+    let right = right.borrow();
 
-    let output = quote! {
-        #[allow(unused)]
-        #possibly_unsafe {
-            #setup
-            if #assert_condition {
-                // using an empty if instead of `!(#expression)` to avoid messing with the spans in `expression`.
-                // And to produce a better error: "expected bool, found <type>"
-                // instead of: "no unary operator '!' implemented for <type>"
+    let mut message_if_left_false = format_message.clone();
+    message_if_left_false.add_cause("left side of `&&` evaluated to false");
+
+    let mut message_if_right_false = format_message;
+    message_if_right_false
+        .add_cause("left side of `&&` evaluated to true, but right side evaluated to false");
+
+    // `&&` logic: if first is true, evaluate second. Otherwise skip second
+    quote! {{
+        #setup
+        if #left {
+            if #right {
+                // both sides true
             } else {
-                ::std::panic!(#format_message, #(#dynamic_args),*);
+                ::std::panic!(#message_if_right_false);
+            }
+        } else {
+            ::std::panic!(#message_if_left_false);
+        }
+    }}
+}
+
+fn resolve_or(
+    setup: TokenStream,
+    mut format_message: FormatMessage,
+    left: impl Borrow<syn::Expr>,
+    right: impl Borrow<syn::Expr>,
+) -> TokenStream {
+    let left = left.borrow();
+    let right = right.borrow();
+
+    format_message.add_cause("both sides of `||` evaluated to false");
+
+    // `||` logic: if first is true, entire expression is true. Otherwise evaluate second
+    quote! {{
+        #setup
+        if #left {
+            // left side true => entire expression true
+        } else {
+            if #right {
+                // right side true => entire expression true
+            } else {
+                // both sides false
+                ::std::panic!(#format_message);
             }
         }
-    };
-    Ok(output)
+    }}
 }
 
 fn printable_expr_string(expr: &impl ToTokens) -> String {
+    // escape braces for format strings
     expr.to_token_stream()
         .to_string()
         .replace('{', "{{")

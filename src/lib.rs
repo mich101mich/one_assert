@@ -56,7 +56,7 @@
 //!  right: 2"
 //! );
 //! ```
-//! As you can see, `assert_eq` is able to provide detailed info on what the individual values were.  
+//! As you can see, `assert_eq` is able to provide detailed info on what the individual values were.\
 //! But: That doesn't have to be the case. Rust has hygienic and procedural macros, so we can just **make `assert!(a == b)` work the same as `assert_eq!(a, b)`**:
 //! ```
 //! # macro_rules! catch_panic {
@@ -144,6 +144,8 @@
 //! ### Changelog
 //! See [Changelog.md](https://github.com/mich101mich/one_assert/blob/master/Changelog.md)
 
+use std::{borrow::Borrow, fmt::Write};
+
 use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, ToTokens};
@@ -173,11 +175,11 @@ impl syn::parse::Parse for Args {
             Err(e) => {
                 let err = if input.is_empty() {
                     // syn's error would use call_site instead of pointing at the broken expression
-                    let msg = format!("incomplete expression: {}", e);
+                    let msg = format!("incomplete expression: {e}");
                     syn::Error::new_spanned(span_source, msg) // checked in tests/fail/malformed_expr.rs
                 } else if let Ok(comma) = input.parse::<syn::Token![,]>() {
                     // syn's error would point at the ',' saying "expected an expression"
-                    let msg = format!("Expression before the comma is incomplete: {}", e);
+                    let msg = format!("Expression before the comma is incomplete: {e}");
                     syn::Error::new_spanned(comma, msg) // checked in tests/fail/malformed_expr.rs
                 } else {
                     e
@@ -275,7 +277,12 @@ impl State {
     /// Create a variable from an expression and store it in the setup code.
     ///
     /// It is assumed that the expression moves the value, so it needs to be debug printed in advance
-    fn add_moving_var(&mut self, expr: syn::Expr, identifier: &str, display: &str) -> TokenStream {
+    fn add_moving_var(
+        &mut self,
+        expr: impl Borrow<syn::Expr>,
+        identifier: &str,
+        display: &str,
+    ) -> TokenStream {
         self.add_var_internal(expr, identifier, display, true)
     }
 
@@ -284,7 +291,7 @@ impl State {
     /// The variable is only used in a borrowed form, so we can debug print only when needed
     fn add_borrowed_var(
         &mut self,
-        expr: syn::Expr,
+        expr: impl Borrow<syn::Expr>,
         identifier: &str,
         display: &str,
     ) -> TokenStream {
@@ -293,11 +300,12 @@ impl State {
 
     fn add_var_internal(
         &mut self,
-        expr: syn::Expr,
+        expr: impl Borrow<syn::Expr>,
         identifier: &str,
         display: &str,
         might_move: bool,
     ) -> TokenStream {
+        let expr = expr.borrow();
         let var_access = if matches!(expr, syn::Expr::Path(_)) {
             // could be a variable of a type that doesn't implement Copy, so we can't store it by value.
             // Instead, we just use the variable directly.
@@ -349,7 +357,7 @@ impl State {
             might_move,
         } in self.variables.drain(..)
         {
-            self.format_message += &format!("\n    {name:>max_name_len$}: ");
+            write!(self.format_message, "\n    {name:>max_name_len$}: ").unwrap();
             self.format_message += if might_move { "{}" } else { "{:?}" };
             self.dynamic_args.push(debug_value);
         }
@@ -357,7 +365,7 @@ impl State {
 
     /// Adds a "caused by" message to the format message
     fn add_cause(&mut self, cause: &str) {
-        self.format_message += &format!("\n  caused by: {}", cause);
+        write!(self.format_message, "\n  caused by: {cause}").unwrap();
     }
 }
 
@@ -402,6 +410,7 @@ fn assert_internal(input: Args) -> Result<TokenStream> {
     Ok(output)
 }
 
+#[allow(clippy::match_same_arms)] // every arm needs its own reasoning and consideration
 fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
     let mut assert_condition = e.to_token_stream();
     match e {
@@ -473,8 +482,8 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
                 | syn::BinOp::Ne(_)
                 | syn::BinOp::Ge(_)
                 | syn::BinOp::Gt(_) => {
-                    let lhs = state.add_borrowed_var(*left, "lhs", "left");
-                    let rhs = state.add_borrowed_var(*right, "rhs", "right");
+                    let lhs = state.add_borrowed_var(left, "lhs", "left");
+                    let rhs = state.add_borrowed_var(right, "rhs", "right");
                     assert_condition = quote! { #(#attrs)* #lhs #op #rhs };
                 }
 
@@ -489,8 +498,8 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
                 | syn::BinOp::BitOr(_)
                 | syn::BinOp::Shl(_)
                 | syn::BinOp::Shr(_) => {
-                    let lhs = state.add_moving_var(*left, "lhs", "left");
-                    let rhs = state.add_moving_var(*right, "rhs", "right");
+                    let lhs = state.add_moving_var(left, "lhs", "left");
+                    let rhs = state.add_moving_var(right, "rhs", "right");
                     assert_condition = quote! { #(#attrs)* #lhs #op #rhs };
                 }
 
@@ -533,7 +542,7 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
             attrs,
         }) if !args.is_empty() => {
             let index_len = (args.len() - 1).to_string().len();
-            let out_args = args.into_iter().enumerate().map(|(i, arg)| {
+            let out_args = args.iter().enumerate().map(|(i, arg)| {
                 state.add_moving_var(arg, &format!("arg{i}"), &format!("arg {i:>index_len$}"))
             });
 
@@ -593,7 +602,7 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
             bracket_token,
         }) => {
             if !matches!(*index, syn::Expr::Lit(_)) {
-                let index = state.add_moving_var(*index, "index", "index");
+                let index = state.add_moving_var(index, "index", "index");
                 // output: `quote! { #(#attrs)* #expr [#index] }` except we want to use the original brackets for span purposes
                 assert_condition = quote! { #(#attrs)* #expr };
                 bracket_token.surround(&mut assert_condition, |out| index.to_tokens(out));
@@ -647,9 +656,9 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
             dot_token,
             paren_token,
         }) => {
-            let obj = state.add_moving_var(*receiver, "object", "self");
+            let obj = state.add_moving_var(receiver, "object", "self");
             let index_len = (args.len().saturating_sub(1)).to_string().len();
-            let out_args = args.into_iter().enumerate().map(|(i, arg)| {
+            let out_args = args.iter().enumerate().map(|(i, arg)| {
                 state.add_moving_var(arg, &format!("arg{i}"), &format!("arg {i:>index_len$}"))
             });
 
@@ -716,11 +725,11 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
             // praying that people didn't override the `Not` operator for their types
             if state.not_token.is_none() {
                 state.not_token = Some(not_token);
-                state.add_cause(&format!("expression {} evaluated to true", expr_str));
+                state.add_cause(&format!("expression {expr_str} evaluated to true"));
             } else {
                 // double negation cancels out
                 state.not_token = None;
-                state.add_cause(&format!("expression {} evaluated to false", expr_str));
+                state.add_cause(&format!("expression {expr_str} evaluated to false"));
             }
 
             return eval_expr(*expr, state);

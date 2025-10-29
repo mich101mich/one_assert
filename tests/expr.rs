@@ -797,7 +797,11 @@ fn test_unary() {
 }
 
 #[test]
-#[allow(clippy::transmute_int_to_bool, clippy::missing_transmute_annotations)]
+#[allow(
+    clippy::transmute_int_to_bool,
+    clippy::missing_transmute_annotations,
+    unnecessary_transmutes
+)]
 fn test_unsafe() {
     one_assert::assert!(unsafe { std::mem::transmute(1u8) });
 

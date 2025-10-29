@@ -25,8 +25,7 @@ impl FullSpan {
             .to_token_stream()
             .into_iter()
             .last()
-            .map(|t| t.span())
-            .unwrap_or(start);
+            .map_or(start, |t| t.span());
         Self(start, end)
     }
     pub fn apply(self, a: TokenStream, b: TokenStream) -> TokenStream {
@@ -58,8 +57,8 @@ impl ToTokens for FieldIdent {
 impl std::fmt::Display for FieldIdent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FieldIdent::Named(ident) => write!(f, "{}", ident),
-            FieldIdent::Index(index) => write!(f, "{}", index),
+            FieldIdent::Named(ident) => write!(f, "{ident}"),
+            FieldIdent::Index(index) => write!(f, "{index}"),
         }
     }
 }

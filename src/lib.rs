@@ -246,8 +246,8 @@ struct State {
     variables: Vec<Variable>,
     /// Contains `unsafe` if the assertion should be wrapped in an unsafe block
     possibly_unsafe: TokenStream,
-    /// Flag if the expression is negated
-    is_negated: bool,
+    /// Optional `!`-token if the condition is negated
+    not_token: Option<syn::token::Not>,
     /// Counter for creating unique identifiers
     next_ident_id: usize,
 }
@@ -260,7 +260,7 @@ impl State {
             dynamic_args: vec![],
             variables: vec![],
             possibly_unsafe: TokenStream::new(),
-            is_negated: false,
+            not_token: None,
             next_ident_id: 0,
         }
     }
@@ -432,8 +432,39 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         }) => {
             match op {
                 // logic operators => preserve fail-fast behavior where expressions like `!vec.empty() && vec[0].ok()` work
-                syn::BinOp::And(and_and) => todo!(),
-                syn::BinOp::Or(or_or) => todo!(),
+                syn::BinOp::And(_) => {
+                    // `&&` logic: if first is true, evaluate second. Otherwise skip second
+                    state.resolve_variables();
+
+                    let State {
+                        setup,
+                        format_message,
+                        dynamic_args,
+                        possibly_unsafe,
+                        not_token,
+                        ..
+                    } = state;
+
+                    if let Some(not_token) = not_token {
+                        assert_condition = quote! { #not_token ( #assert_condition ) };
+                    }
+
+                    let output = quote! {
+                        #[allow(unused)]
+                        #possibly_unsafe {
+                            #setup
+                            if #assert_condition {
+                                // using an empty if instead of `!(#expression)` to avoid messing with the spans in `expression`.
+                                // And to produce a better error: "expected bool, found <type>"
+                                // instead of: "no unary operator '!' implemented for <type>"
+                            } else {
+                                ::std::panic!(#format_message, #(#dynamic_args),*);
+                            }
+                        }
+                    };
+                    return Ok(output);
+                }
+                syn::BinOp::Or(_) => todo!(),
 
                 // comparison operators, handle as expected
                 syn::BinOp::Eq(_)
@@ -480,10 +511,8 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
                 }
 
                 // unknown operator, keep as-is
-                _ => todo!(),
+                _ => {}
             }
-            // TODO: check if '||' or '&&'
-            // TODO: check if move op
         }
 
         // { ... }
@@ -672,7 +701,7 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         // !expr
         syn::Expr::Unary(syn::ExprUnary {
             expr,
-            op: syn::UnOp::Not(_),
+            op: syn::UnOp::Not(not_token),
             attrs,
         }) => {
             if !attrs.is_empty() {
@@ -682,13 +711,17 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
                 );
             }
 
+            let expr_str = printable_expr_string(&expr);
+
             // praying that people didn't override the `Not` operator for their types
-            state.is_negated = !state.is_negated;
-            state.add_cause(&format!(
-                "expression {} evaluated to {}",
-                printable_expr_string(&expr),
-                state.is_negated
-            ));
+            if state.not_token.is_none() {
+                state.not_token = Some(not_token);
+                state.add_cause(&format!("expression {} evaluated to true", expr_str));
+            } else {
+                // double negation cancels out
+                state.not_token = None;
+                state.add_cause(&format!("expression {} evaluated to false", expr_str));
+            }
 
             return eval_expr(*expr, state);
         }
@@ -721,12 +754,12 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
         format_message,
         dynamic_args,
         possibly_unsafe,
-        is_negated,
+        not_token,
         ..
     } = state;
 
-    if is_negated {
-        assert_condition = quote! { !#assert_condition };
+    if let Some(not_token) = not_token {
+        assert_condition = quote! { #not_token ( #assert_condition ) };
     }
 
     let output = quote! {
@@ -735,8 +768,8 @@ fn eval_expr(e: syn::Expr, mut state: State) -> Result<TokenStream> {
             #setup
             if #assert_condition {
                 // using an empty if instead of `!(#expression)` to avoid messing with the spans in `expression`.
-                // And to produce a better error: "expected bool, found <type>" instead of
-                // "no unary operator '!' implemented for <type>"
+                // And to produce a better error: "expected bool, found <type>"
+                // instead of: "no unary operator '!' implemented for <type>"
             } else {
                 ::std::panic!(#format_message, #(#dynamic_args),*);
             }

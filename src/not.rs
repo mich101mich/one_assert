@@ -1,21 +1,38 @@
 use super::*;
 
 #[allow(clippy::match_same_arms)] // every arm needs its own reasoning and consideration
-pub fn eval_not_expr(
+pub(crate) fn eval_not_expr(
     mut e: syn::Expr,
     mut setup: TokenStream,
     mut format_message: FormatMessage,
     not_token: syn::Token![!],
     not_attrs: Vec<syn::Attribute>,
 ) -> Result<TokenStream> {
-    let mut assert_condition = e.to_token_stream();
-
     // inline any parentheses and invisible groups as they are not necessary
-    while let syn::Expr::Paren(syn::ExprParen { expr: inner, .. })
-    | syn::Expr::Group(syn::ExprGroup { expr: inner, .. }) = e
-    {
-        e = *inner;
+    enum ParensOrGroups {
+        Paren(syn::token::Paren),
+        Group(syn::token::Group),
     }
+    let mut parens = vec![];
+    loop {
+        match e {
+            syn::Expr::Paren(syn::ExprParen {
+                expr, paren_token, ..
+            }) => {
+                parens.push(ParensOrGroups::Paren(paren_token));
+                e = *expr;
+            }
+            syn::Expr::Group(syn::ExprGroup {
+                expr, group_token, ..
+            }) => {
+                parens.push(ParensOrGroups::Group(group_token));
+                e = *expr;
+            }
+            _ => break,
+        }
+    }
+
+    let mut assert_condition = e.to_token_stream();
 
     format_message.add_cause(format_args!(
         "negated expression `{}` evaluated to true",
@@ -324,9 +341,23 @@ pub fn eval_not_expr(
 
     variables.resolve_variables(&mut setup, &mut format_message);
 
-    Ok(quote! {{
+    for paren in parens.into_iter().rev() {
+        let inner = std::mem::take(&mut assert_condition);
+        match paren {
+            ParensOrGroups::Paren(paren_token) => {
+                paren_token.surround(&mut assert_condition, |out| out.extend(inner))
+            }
+            ParensOrGroups::Group(group_token) => {
+                group_token.surround(&mut assert_condition, |out| out.extend(inner))
+            }
+        }
+    }
+
+    Ok(quote! { #[allow(unreachable_code)] {
         #setup
-        if ! #(#not_attrs)* #not_token ( #assert_condition ) {
+        if #(#not_attrs)* #not_token #assert_condition {
+            // assertion passed
+        } else {
             ::std::panic!(#format_message);
         }
     }})
@@ -344,7 +375,7 @@ fn resolve_nand(
     format_message.add_cause("both sides of `&&` evaluated to true");
 
     // `!(a && b)` logic: if first is false, entire expression is true. Otherwise evaluate second
-    quote! {{
+    quote! { #[allow(unreachable_code)] {
         #setup
         if #left {
             if #right {
@@ -376,7 +407,7 @@ fn resolve_nor(
         .add_cause("left side of `||` evaluated to false, but right side evaluated to true");
 
     // `||` logic: if first is true, inner expression is true, causing the assertion to fail
-    quote! {{
+    quote! { #[allow(unreachable_code)] {
         #setup
         if #left {
             // !(true || _) == !(true) == false => assertion fails

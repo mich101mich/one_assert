@@ -579,7 +579,7 @@ fn eval_expr(
 
     variables.resolve_variables(&mut setup, &mut format_message);
 
-    Ok(quote! {{
+    Ok(quote! { #[allow(unreachable_code)] {
         #setup
         if #assert_condition {
             // using an empty if instead of `!(#expression)` to avoid messing with the spans in `expression`.
@@ -608,7 +608,7 @@ fn resolve_and(
         .add_cause("left side of `&&` evaluated to true, but right side evaluated to false");
 
     // `&&` logic: if first is true, evaluate second. Otherwise skip second
-    quote! {{
+    quote! { #[allow(unreachable_code)] {
         #setup
         if #left {
             if #right {
@@ -634,7 +634,7 @@ fn resolve_or(
     format_message.add_cause("both sides of `||` evaluated to false");
 
     // `||` logic: if first is true, entire expression is true. Otherwise evaluate second
-    quote! {{
+    quote! { #[allow(unreachable_code)] {
         #setup
         if #left {
             // left side true => entire expression true

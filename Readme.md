@@ -21,64 +21,61 @@ The practical reason: `assert_eq!(a, b)` provides better output than `assert!(a 
 
 ```rust
 let x = 1;
-let msg = catch_panic!({ assert!(x == 2); });
-assert_eq!(msg, "assertion failed: x == 2");
+assert!(x == 2);
+// Panic message:
+// assertion failed: x == 2
 
-let msg = catch_panic!({ assert_eq!(x, 2); });
-assert_eq!(msg, "assertion `left == right` failed
-  left: 1
- right: 2"
-);
+assert_eq!(x, 2);
+// Panic message:
+// assertion `left == right` failed
+//   left: 1
+//  right: 2
 ```
 As you can see, `assert_eq` is able to provide detailed info on what the individual values were.
 But: That doesn’t have to be the case. Rust has hygienic and procedural macros, so we can just make `assert!(a == b)` work the same as `assert_eq!(a, b)`:
 
 ```rust
 let x = 1;
-let msg = catch_panic!({ one_assert::assert!(x == 2); });
-assert_eq!(msg, "assertion `x == 2` failed
-     left: 1
-    right: 2"
-);
+one_assert::assert!(x == 2);
+// Panic message:
+// assertion `x == 2` failed
+//      left: 1
+//     right: 2
 ```
 And now we can expand this to as many operators as we want:
 
 ```rust
 let x = 1;
-let msg = catch_panic!({ one_assert::assert!(x > 2); });
-assert_eq!(msg, "assertion `x > 2` failed
-     left: 1
-    right: 2"
-);
+one_assert::assert!(x > 2);
+// assertion `x > 2` failed
+//      left: 1
+//     right: 2
 ```
 
 ## Examples
 ```rust
 let x = 1;
-let msg = catch_panic!({ one_assert::assert!(x > 2); });
-assert_eq!(msg, "assertion `x > 2` failed
-     left: 1
-    right: 2"
-);
+one_assert::assert!(x > 2);
+// assertion `x > 2` failed
+//      left: 1
+//     right: 2
 
-let msg = catch_panic!({ one_assert::assert!(x != 1, "x ({}) should not be 1", x); });
-assert_eq!(msg, "assertion `x != 1` failed: x (1) should not be 1
-     left: 1
-    right: 1"
-);
+one_assert::assert!(x != 1, "x ({}) should not be 1", x);
+// assertion `x != 1` failed: x (1) should not be 1
+//      left: 1
+//     right: 1
 
 let s = "Hello World";
-let msg = catch_panic!({ one_assert::assert!(s.starts_with("hello")); });
-assert_eq!(msg, r#"assertion `s.starts_with("hello")` failed
-     self: "Hello World"
-    arg 0: "hello""#
-);
+one_assert::assert!(s.starts_with("hello"));
+// assertion `s.starts_with("hello")` failed
+//      self: "Hello World"
+//     arg 0: "hello"
 ```
 Limitations
 - **Several Components need to implement `Debug`**
   - The macro will take whatever part of the expression is considered useful and debug print it. This means that those parts need to implement `Debug`.
   - What is printed as part of any given expression type is subject to change, so it is recommended to only use this in code where pretty much everything implements `Debug`.
-- **`Debug` printing happens even if the assertion passes**
+- **`Debug` printing happens even if the assertion passes** TODO: update
   - Because this macro prints more than just the two sides of an `==` or `!=` comparison, it has to deal with the fact that some values are moved during the evaluation of the expression. This means that the values have to be printed in advance.
   - Consequence: **Don’t use this macro in performance-critical code.**
   - Note however, that the expression and each part of it is only **evaluated** once.

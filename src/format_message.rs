@@ -26,7 +26,7 @@ impl FormatMessage {
     }
 
     pub fn add_cause(&mut self, cause: impl Display) {
-        write!(self.message, "\n    caused by: {cause}").unwrap();
+        write!(self.message, "\n  caused by: {cause}").unwrap();
     }
 }
 

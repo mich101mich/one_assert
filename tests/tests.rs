@@ -83,7 +83,7 @@ fn test_one_assert() {
     assert_throws!(
         one_assert::assert!(x && false),
         "assertion `x && false` failed
-    caused by: left side of `&&` evaluated to true, but right side evaluated to false",
+  caused by: left side of `&&` evaluated to true, but right side evaluated to false",
     );
 }
 
@@ -101,7 +101,7 @@ fn test_one_assert_message() {
     assert_throws!(
         one_assert::assert!(x && false, "x={}", x),
         "assertion `x && false` failed: x=true
-    caused by: left side of `&&` evaluated to true, but right side evaluated to false",
+  caused by: left side of `&&` evaluated to true, but right side evaluated to false",
     );
 }
 

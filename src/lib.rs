@@ -50,11 +50,13 @@
 //! let msg = catch_panic!({ assert!(x == 2); });
 //! assert_eq!(msg, "assertion failed: x == 2");
 //!
+//! # if rustc_version::version().unwrap() > rustc_version::Version::new(1, 70, 0) { // Output of assert_eq changed since MSRV...
 //! let msg = catch_panic!({ assert_eq!(x, 2); });
 //! assert_eq!(msg, "assertion `left == right` failed
 //!   left: 1
 //!  right: 2"
 //! );
+//! # }
 //! ```
 //! As you can see, `assert_eq` is able to provide detailed info on what the individual values were.\
 //! But: That doesn't have to be the case. Rust has hygienic and procedural macros, so we can just **make `assert!(a == b)` work the same as `assert_eq!(a, b)`**:

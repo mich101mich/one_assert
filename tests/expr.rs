@@ -109,7 +109,7 @@ fn test_binary() {
     assert_throws!(
         one_assert::assert!(b && false),
         "assertion `b && false` failed
-    caused by: left side of `&&` evaluated to true, but right side evaluated to false"
+  caused by: left side of `&&` evaluated to true, but right side evaluated to false"
     );
 
     one_assert::assert!(b & true);
@@ -125,7 +125,7 @@ fn test_binary() {
     assert_throws!(
         one_assert::assert!(b || false),
         "assertion `b || false` failed
-    caused by: both sides of `||` evaluated to false"
+  caused by: both sides of `||` evaluated to false"
     );
 
     one_assert::assert!(b | true);
@@ -333,25 +333,26 @@ fn test_cast() {
 // #[test]
 // fn test_closure() {}
 
-#[test]
-fn test_const() {
-    one_assert::assert!(
-        const {
-            let a = 1;
-            a == 1
-        }
-    );
+// NOTE: inline consts are only stable since Rust 1.79, which is after the current MSRV of 1.70
+// #[test]
+// fn test_const() {
+//     one_assert::assert!(
+//         const {
+//             let a = 1;
+//             a == 1
+//         }
+//     );
 
-    assert_throws!(
-        one_assert::assert!(
-            const {
-                let a = 1;
-                a == 2
-            }
-        ),
-        "assertion `const { let a = 1; a == 2 }` failed"
-    );
-}
+//     assert_throws!(
+//         one_assert::assert!(
+//             const {
+//                 let a = 1;
+//                 a == 2
+//             }
+//         ),
+//         "assertion `const { let a = 1; a == 2 }` failed"
+//     );
+// }
 
 // #[test]
 // fn test_continue() {}
@@ -685,7 +686,7 @@ fn test_unary() {
             one_assert::assert!(!b),
             concat!(
                 "assertion `! b` failed
-    caused by: negated expression `b` evaluated to true"
+  caused by: negated expression `b` evaluated to true"
             )
         );
     }
@@ -726,6 +727,7 @@ fn test_unary() {
 }
 
 #[test]
+#[allow(unknown_lints)] // newer rust requires unnecessary_transmutes, older rusts don't know it
 #[allow(
     clippy::transmute_int_to_bool,
     clippy::missing_transmute_annotations,

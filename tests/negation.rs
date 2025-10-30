@@ -51,7 +51,7 @@ fn test_negated_await() {
             let _ = std::future::Future::poll(expr, &mut cx);
         },
         "assertion `! true_fut.await` failed
-    caused by: negated expression `true_fut.await` evaluated to true"
+  caused by: negated expression `true_fut.await` evaluated to true"
     );
 }
 
@@ -64,7 +64,7 @@ fn test_negated_binary() {
     assert_throws!(
         one_assert::assert!(!(a == 1)),
         "assertion `! (a == 1)` failed
-    caused by: negated expression `a == 1` evaluated to true
+  caused by: negated expression `a == 1` evaluated to true
      left: 1
     right: 1"
     );
@@ -73,7 +73,7 @@ fn test_negated_binary() {
     assert_throws!(
         one_assert::assert!(!(a != 2)),
         "assertion `! (a != 2)` failed
-    caused by: negated expression `a != 2` evaluated to true
+  caused by: negated expression `a != 2` evaluated to true
      left: 1
     right: 2"
     );
@@ -82,7 +82,7 @@ fn test_negated_binary() {
     assert_throws!(
         one_assert::assert!(!(a < 2)),
         "assertion `! (a < 2)` failed
-    caused by: negated expression `a < 2` evaluated to true
+  caused by: negated expression `a < 2` evaluated to true
      left: 1
     right: 2"
     );
@@ -91,7 +91,7 @@ fn test_negated_binary() {
     assert_throws!(
         one_assert::assert!(!(a <= 1)),
         "assertion `! (a <= 1)` failed
-    caused by: negated expression `a <= 1` evaluated to true
+  caused by: negated expression `a <= 1` evaluated to true
      left: 1
     right: 1"
     );
@@ -100,7 +100,7 @@ fn test_negated_binary() {
     assert_throws!(
         one_assert::assert!(!(a > 0)),
         "assertion `! (a > 0)` failed
-    caused by: negated expression `a > 0` evaluated to true
+  caused by: negated expression `a > 0` evaluated to true
      left: 1
     right: 0"
     );
@@ -109,7 +109,7 @@ fn test_negated_binary() {
     assert_throws!(
         one_assert::assert!(!(a >= 1)),
         "assertion `! (a >= 1)` failed
-    caused by: negated expression `a >= 1` evaluated to true
+  caused by: negated expression `a >= 1` evaluated to true
      left: 1
     right: 1"
     );
@@ -119,15 +119,15 @@ fn test_negated_binary() {
     assert_throws!(
         one_assert::assert!(!(b && true)),
         "assertion `! (b && true)` failed
-    caused by: negated expression `b && true` evaluated to true
-    caused by: both sides of `&&` evaluated to true"
+  caused by: negated expression `b && true` evaluated to true
+  caused by: both sides of `&&` evaluated to true"
     );
 
     one_assert::assert!(!(b & false));
     assert_throws!(
         one_assert::assert!(!(b & true)),
         "assertion `! (b & true)` failed
-    caused by: negated expression `b & true` evaluated to true
+  caused by: negated expression `b & true` evaluated to true
      left: true
     right: true"
     );
@@ -137,15 +137,15 @@ fn test_negated_binary() {
     assert_throws!(
         one_assert::assert!(!(b || true)),
         "assertion `! (b || true)` failed
-    caused by: negated expression `b || true` evaluated to true
-    caused by: left side of `||` evaluated to false, but right side evaluated to true"
+  caused by: negated expression `b || true` evaluated to true
+  caused by: left side of `||` evaluated to false, but right side evaluated to true"
     );
 
     one_assert::assert!(!(b | false));
     assert_throws!(
         one_assert::assert!(!(b | true)),
         "assertion `! (b | true)` failed
-    caused by: negated expression `b | true` evaluated to true
+  caused by: negated expression `b | true` evaluated to true
      left: false
     right: true"
     );
@@ -169,7 +169,7 @@ fn test_negated_binary() {
                 one_assert::assert!(!(a $op OpToBool(1))),
                 concat!(
                     "assertion `! (a ", stringify!($op), " OpToBool(1))` failed
-    caused by: negated expression `a ", stringify!($op), " OpToBool(1)` evaluated to true
+  caused by: negated expression `a ", stringify!($op), " OpToBool(1)` evaluated to true
      left: OpToBool(1)
     right: OpToBool(1)"
                 )
@@ -202,7 +202,7 @@ fn test_negated_block() {
                 a == 1
             }),
             "assertion `! { let a = 1 ; a == 1 }` failed
-    caused by: negated expression `{ let a = 1 ; a == 1 }` evaluated to true"
+  caused by: negated expression `{ let a = 1 ; a == 1 }` evaluated to true"
         );
     } else {
         assert_throws!(
@@ -211,7 +211,7 @@ fn test_negated_block() {
                 a == 1
             }),
             "assertion `! { let a = 1; a == 1 }` failed
-    caused by: negated expression `{ let a = 1; a == 1 }` evaluated to true"
+  caused by: negated expression `{ let a = 1; a == 1 }` evaluated to true"
         );
     }
 }
@@ -235,7 +235,7 @@ fn test_negated_call() {
     assert_throws!(
         one_assert::assert!(!dummy_fn(a, b, c)),
         "assertion `! dummy_fn(a, b, c)` failed
-    caused by: negated expression `dummy_fn(a, b, c)` evaluated to true
+  caused by: negated expression `dummy_fn(a, b, c)` evaluated to true
     arg 0: true
     arg 1: 1
     arg 2: \"hello\""
@@ -251,7 +251,7 @@ fn test_negated_call() {
     assert_throws!(
         one_assert::assert!(!ten_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0)),
         "assertion `! ten_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0)` failed
-    caused by: negated expression `ten_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0)` evaluated to true
+  caused by: negated expression `ten_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0)` evaluated to true
     arg 0: 1
     arg 1: 1
     arg 2: 0
@@ -273,7 +273,7 @@ fn test_negated_call() {
     assert_throws!(
         one_assert::assert!(!eleven_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0, 0)),
         "assertion `! eleven_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0, 0)` failed
-    caused by: negated expression `eleven_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0, 0)` evaluated to true
+  caused by: negated expression `eleven_arg_fn(a, b, 0, 0, 0, 0, 0, 0, 0, 0, 0)` evaluated to true
     arg  0: 1
     arg  1: 1
     arg  2: 0
@@ -318,29 +318,29 @@ fn test_negated_call() {
     assert_throws!(
         one_assert::assert!(!simple_true_fn()),
         "assertion `! simple_true_fn()` failed
-    caused by: negated expression `simple_true_fn()` evaluated to true"
+  caused by: negated expression `simple_true_fn()` evaluated to true"
     );
     assert_throws!(
         one_assert::assert!(!curry_true()()),
         "assertion `! curry_true() ()` failed
-    caused by: negated expression `curry_true() ()` evaluated to true"
+  caused by: negated expression `curry_true() ()` evaluated to true"
     );
     assert_throws!(
         one_assert::assert!(!echo_fn(true)),
         "assertion `! echo_fn(true)` failed
-    caused by: negated expression `echo_fn(true)` evaluated to true
+  caused by: negated expression `echo_fn(true)` evaluated to true
     arg 0: true"
     );
     assert_throws!(
         one_assert::assert!(!curry_echo()(true)),
         "assertion `! curry_echo() (true)` failed
-    caused by: negated expression `curry_echo() (true)` evaluated to true
+  caused by: negated expression `curry_echo() (true)` evaluated to true
     arg 0: true"
     );
     assert_throws!(
         one_assert::assert!(!curry_return(simple_true_fn)()),
         "assertion `! curry_return(simple_true_fn) ()` failed
-    caused by: negated expression `curry_return(simple_true_fn) ()` evaluated to true"
+  caused by: negated expression `curry_return(simple_true_fn) ()` evaluated to true"
     ); // doesn't print args because the actual call is to `simple_true_fn`
 }
 
@@ -352,46 +352,47 @@ fn test_negated_cast() {
     assert_throws!(
         one_assert::assert!(!(true as bool)),
         "assertion `! (true as bool)` failed
-    caused by: negated expression `true as bool` evaluated to true"
+  caused by: negated expression `true as bool` evaluated to true"
     );
 }
 
 // #[test]
 // fn test_negated_closure() {}
 
-#[test]
-fn test_negated_const() {
-    one_assert::assert!(
-        !const {
-            let a = 1;
-            a == 2
-        }
-    );
+// NOTE: inline consts are only stable since Rust 1.79, which is after the current MSRV of 1.70
+// #[test]
+// fn test_negated_const() {
+//     one_assert::assert!(
+//         !const {
+//             let a = 1;
+//             a == 2
+//         }
+//     );
 
-    if rustc_version::version().unwrap() < rustc_version::Version::new(1, 75, 0) {
-        assert_throws!(
-            one_assert::assert!(
-                !const {
-                    let a = 1;
-                    a == 1
-                }
-            ),
-            "assertion `! const { let a = 1 ; a == 1 }` failed
-    caused by: negated expression `const { let a = 1 ; a == 1 }` evaluated to true"
-        );
-    } else {
-        assert_throws!(
-            one_assert::assert!(
-                !const {
-                    let a = 1;
-                    a == 1
-                }
-            ),
-            "assertion `! const { let a = 1; a == 1 }` failed
-    caused by: negated expression `const { let a = 1; a == 1 }` evaluated to true"
-        );
-    }
-}
+//     if rustc_version::version().unwrap() < rustc_version::Version::new(1, 75, 0) {
+//         assert_throws!(
+//             one_assert::assert!(
+//                 !const {
+//                     let a = 1;
+//                     a == 1
+//                 }
+//             ),
+//             "assertion `! const { let a = 1 ; a == 1 }` failed
+//   caused by: negated expression `const { let a = 1 ; a == 1 }` evaluated to true"
+//         );
+//     } else {
+//         assert_throws!(
+//             one_assert::assert!(
+//                 !const {
+//                     let a = 1;
+//                     a == 1
+//                 }
+//             ),
+//             "assertion `! const { let a = 1; a == 1 }` failed
+//   caused by: negated expression `const { let a = 1; a == 1 }` evaluated to true"
+//         );
+//     }
+// }
 
 // #[test]
 // fn test_negated_continue() {}
@@ -409,7 +410,7 @@ fn test_negated_field() {
     assert_throws!(
         one_assert::assert!(!unbob.valid),
         "assertion `! unbob.valid` failed
-    caused by: negated expression `unbob.valid` evaluated to true"
+  caused by: negated expression `unbob.valid` evaluated to true"
     );
 }
 
@@ -428,13 +429,13 @@ fn test_negated_if() {
     assert_throws!(
         one_assert::assert!(!if x == 1 { true } else { y == 3 }),
         "assertion `! if x == 1 { true } else { y == 3 }` failed
-    caused by: negated expression `if x == 1 { true } else { y == 3 }` evaluated to true"
+  caused by: negated expression `if x == 1 { true } else { y == 3 }` evaluated to true"
     );
 
     assert_throws!(
         one_assert::assert!(!if x == 2 { true } else { y == 3 }),
         "assertion `! if x == 2 { true } else { y == 3 }` failed
-    caused by: negated expression `if x == 2 { true } else { y == 3 }` evaluated to true"
+  caused by: negated expression `if x == 2 { true } else { y == 3 }` evaluated to true"
     );
 
     assert_throws!(
@@ -449,7 +450,7 @@ fn test_negated_if() {
         }),
         "assertion `! if x == 0 { true } else if x == 1 { y == x + 2 } else if x == 2 { false }
 else { panic! () }` failed
-    caused by: negated expression `if x == 0 { true } else if x == 1 { y == x + 2 } else if x == 2 { false } else
+  caused by: negated expression `if x == 0 { true } else if x == 1 { y == x + 2 } else if x == 2 { false } else
 { panic! () }` evaluated to true"
     );
 
@@ -467,7 +468,7 @@ else { panic! () }` failed
         }),
         "assertion `! if x == 0 { true } else if x == 5 { y == x } else if false { true } else if
 x == 2 { false } else { ! if x == 1 { ! (y == 3) } else { false } }` failed
-    caused by: negated expression `if x == 0 { true } else if x == 5 { y == x } else if false { true } else if x
+  caused by: negated expression `if x == 0 { true } else if x == 5 { y == x } else if false { true } else if x
 == 2 { false } else { ! if x == 1 { ! (y == 3) } else { false } }` evaluated to true"
     );
 }
@@ -482,14 +483,14 @@ fn test_negated_index() {
     assert_throws!(
         one_assert::assert!(!arr[idx]),
         "assertion `! arr [idx]` failed
-    caused by: negated expression `arr [idx]` evaluated to true
+  caused by: negated expression `arr [idx]` evaluated to true
     index: 0"
     );
 
     assert_throws!(
         one_assert::assert!(!arr[0]),
         "assertion `! arr [0]` failed
-    caused by: negated expression `arr [0]` evaluated to true"
+  caused by: negated expression `arr [0]` evaluated to true"
     );
 
     let map = std::collections::HashMap::<&str, bool>::from_iter([("a", true), ("b", false)]);
@@ -501,7 +502,7 @@ fn test_negated_index() {
     assert_throws!(
         one_assert::assert!(!map[true_key]),
         r#"assertion `! map [true_key]` failed
-    caused by: negated expression `map [true_key]` evaluated to true
+  caused by: negated expression `map [true_key]` evaluated to true
     index: "a""#
     );
 }
@@ -519,7 +520,7 @@ fn test_negated_lit() {
     assert_throws!(
         one_assert::assert!(!true),
         "assertion `! true` failed
-    caused by: negated expression `true` evaluated to true"
+  caused by: negated expression `true` evaluated to true"
     );
 }
 
@@ -536,7 +537,7 @@ fn test_negated_loop() {
                 break true;
             }),
             "assertion `! loop { break true ; }` failed
-    caused by: negated expression `loop { break true ; }` evaluated to true"
+  caused by: negated expression `loop { break true ; }` evaluated to true"
         );
     } else {
         assert_throws!(
@@ -544,7 +545,7 @@ fn test_negated_loop() {
                 break true;
             }),
             "assertion `! loop { break true; }` failed
-    caused by: negated expression `loop { break true; }` evaluated to true"
+  caused by: negated expression `loop { break true; }` evaluated to true"
         );
     }
 }
@@ -556,7 +557,7 @@ fn test_negated_macro() {
     assert_throws!(
         one_assert::assert!(!dbg!(true)),
         "assertion `! dbg! (true)` failed
-    caused by: negated expression `dbg! (true)` evaluated to true"
+  caused by: negated expression `dbg! (true)` evaluated to true"
     );
 }
 
@@ -579,7 +580,7 @@ fn test_negated_match() {
                 _ => false,
             }),
             "assertion `! match(x, y) { (2, _) => true, (_, 2) =>! (z == 5), _ => false, }` failed
-    caused by: negated expression `match(x, y) { (2, _) => true, (_, 2) =>! (z == 5), _ => false, }` evaluated to true"
+  caused by: negated expression `match(x, y) { (2, _) => true, (_, 2) =>! (z == 5), _ => false, }` evaluated to true"
         );
 
         assert_throws!(
@@ -592,7 +593,7 @@ fn test_negated_match() {
                 _ => false,
             }),
             "assertion `! match x { 2 => true, _ if y < 5 => { let w = 4 ; z != w } _ => false, }` failed
-    caused by: negated expression `match x { 2 => true, _ if y < 5 => { let w = 4 ; z != w } _ => false, }` evaluated to true"
+  caused by: negated expression `match x { 2 => true, _ if y < 5 => { let w = 4 ; z != w } _ => false, }` evaluated to true"
         );
     } else {
         assert_throws!(
@@ -602,7 +603,7 @@ fn test_negated_match() {
                 _ => false,
             }),
             "assertion `! match (x, y) { (2, _) => true, (_, 2) => ! (z == 5), _ => false, }` failed
-    caused by: negated expression `match (x, y) { (2, _) => true, (_, 2) => ! (z == 5), _ => false, }` evaluated to true"
+  caused by: negated expression `match (x, y) { (2, _) => true, (_, 2) => ! (z == 5), _ => false, }` evaluated to true"
         );
 
         assert_throws!(
@@ -615,7 +616,7 @@ fn test_negated_match() {
                 _ => false,
             }),
             "assertion `! match x { 2 => true, _ if y < 5 => { let w = 4; z != w } _ => false, }` failed
-    caused by: negated expression `match x { 2 => true, _ if y < 5 => { let w = 4; z != w } _ => false, }` evaluated to true"
+  caused by: negated expression `match x { 2 => true, _ if y < 5 => { let w = 4; z != w } _ => false, }` evaluated to true"
         );
     }
 }
@@ -628,7 +629,7 @@ fn test_negated_methodcall() {
     assert_throws!(
         one_assert::assert!(!s.contains("ell")),
         r#"assertion `! s.contains("ell")` failed
-    caused by: negated expression `s.contains("ell")` evaluated to true
+  caused by: negated expression `s.contains("ell")` evaluated to true
      self: "hello"
     arg 0: "ell""#
     );
@@ -641,7 +642,7 @@ fn test_negated_paren() {
     assert_throws!(
         one_assert::assert!(!(!false)),
         "assertion `! (! false)` failed
-    caused by: negated expression `! false` evaluated to true"
+  caused by: negated expression `! false` evaluated to true"
     );
 }
 
@@ -654,7 +655,7 @@ fn test_negated_path() {
     assert_throws!(
         one_assert::assert!(!x),
         "assertion `! x` failed
-    caused by: negated expression `x` evaluated to true"
+  caused by: negated expression `x` evaluated to true"
     );
 
     mod foo {
@@ -674,7 +675,7 @@ fn test_negated_path() {
     assert_throws!(
         one_assert::assert!(!foo::bar::TRUE),
         "assertion `! foo :: bar :: TRUE` failed
-    caused by: negated expression `foo :: bar :: TRUE` evaluated to true"
+  caused by: negated expression `foo :: bar :: TRUE` evaluated to true"
     );
 
     one_assert::assert!(!foo::Generic::<-1>::IS_POSITIVE);
@@ -682,7 +683,7 @@ fn test_negated_path() {
     assert_throws!(
         one_assert::assert!(!foo::Generic::<3>::IS_POSITIVE),
         "assertion `! foo :: Generic :: < 3 > :: IS_POSITIVE` failed
-    caused by: negated expression `foo :: Generic :: < 3 > :: IS_POSITIVE` evaluated to true"
+  caused by: negated expression `foo :: Generic :: < 3 > :: IS_POSITIVE` evaluated to true"
     );
 }
 
@@ -719,7 +720,7 @@ fn test_negated_try() {
         })()
         .unwrap(),
         "assertion `! x ?` failed
-    caused by: negated expression `x ?` evaluated to true"
+  caused by: negated expression `x ?` evaluated to true"
     );
 }
 
@@ -748,7 +749,7 @@ fn test_negated_unary() {
                 one_assert::assert!(!!b),
                 concat!(
                     "assertion `!! b` failed
-    caused by: negated expression ` b` evaluated to true"
+  caused by: negated expression `! b` evaluated to true"
                 )
             );
         } else {
@@ -757,7 +758,7 @@ fn test_negated_unary() {
                 one_assert::assert!(!!b),
                 concat!(
                     "assertion `! ! b` failed
-    caused by: negated expression `! b` evaluated to true"
+  caused by: negated expression `! b` evaluated to true"
                 )
             );
         }
@@ -781,7 +782,7 @@ fn test_negated_unary() {
             one_assert::assert!(!-b),
             concat!(
                 "assertion `! - b` failed
-    caused by: negated expression `- b` evaluated to true"
+  caused by: negated expression `- b` evaluated to true"
             )
         );
     }
@@ -803,7 +804,7 @@ fn test_negated_unary() {
         assert_throws!(
             one_assert::assert!(!*b),
             "assertion `! * b` failed
-    caused by: negated expression `* b` evaluated to true"
+  caused by: negated expression `* b` evaluated to true"
         );
     }
 }
@@ -816,7 +817,7 @@ fn test_negated_unsafe() {
     assert_throws!(
         one_assert::assert!(!unsafe { std::mem::transmute(1u8) }),
         "assertion `! unsafe { std :: mem :: transmute(1u8) }` failed
-    caused by: negated expression `unsafe { std :: mem :: transmute(1u8) }` evaluated to true"
+  caused by: negated expression `unsafe { std :: mem :: transmute(1u8) }` evaluated to true"
     );
 }
 

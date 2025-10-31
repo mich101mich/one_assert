@@ -77,6 +77,14 @@ jobs:
     - uses: Swatinem/rust-cache@v2
     - uses: actions-rs/toolchain@v1
       with: { toolchain: 1.70.0 }
+    - name: Downgrade non-compliant dependencies
+      run: |
+        cargo +1.70.0 update -p trybuild --precise 1.0.109
+        cargo +1.70.0 update -p toml --precise 0.9.6
+        cargo +1.70.0 update -p toml_datetime --precise 0.7.1
+        cargo +1.70.0 update -p toml_parser --precise 1.0.2
+        cargo +1.70.0 update -p toml_writer --precise 1.0.2
+        cargo +1.70.0 update -p serde_spanned --precise 1.0.1
     - name: Run tests
       uses: actions-rs/cargo@v1
       with: { command: test, toolchain: 1.70.0, args: --tests } # only run --tests, which excludes the doctests from Readme.md

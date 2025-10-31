@@ -163,6 +163,7 @@ mod variables;
 
 use error::*;
 use format_message::*;
+use utils::*;
 use variables::*;
 
 /// Parsed arguments for the `assert` macro
@@ -430,10 +431,7 @@ fn eval_expr(
         syn::Expr::Group(_) => unreachable!(), // inlined at the start of the function
 
         // if cond { ... } else { ... }
-        syn::Expr::If(_) => {
-            // TODO: We should at least check the condition to say which block executed...
-        } // we could analyze the condition and/or blocks, but that is a bit excessive.
-        // If you want better output, put the assert in the if and not the other way around.
+        syn::Expr::If(expr_if) => return resolve_if(setup, format_message, expr_if),
 
         // expr[index]
         syn::Expr::Index(syn::ExprIndex {
@@ -651,12 +649,108 @@ fn resolve_or(
     }}
 }
 
-fn printable_expr_string(expr: &impl ToTokens) -> String {
-    // escape braces for format strings
-    expr.to_token_stream()
-        .to_string()
-        .replace('{', "{{")
-        .replace('}', "}}")
+fn resolve_if(
+    setup: TokenStream,
+    format_message: FormatMessage,
+    expr_if: syn::ExprIf,
+) -> Result<TokenStream> {
+    let syn::ExprIf {
+        if_token,
+        cond,
+        then_branch,
+        mut else_branch,
+        ..
+    } = expr_if;
+
+    let mut format_cond = format_message.clone();
+    format_cond.add_cause(format_args!(
+        "
+  - if condition `{}` was true
+    - then-block `{}` evaluated to false",
+        printable_expr_string(&cond),
+        printable_expr_string(&then_branch)
+    ));
+
+    let mut out = quote! {
+        if #cond {
+            if #then_branch { /* assertion passed */ } else { ::std::panic!(#format_cond); }
+        }
+    };
+
+    let mut cause_message = format!(
+        "
+  - if condition `{}` was false",
+        printable_expr_string(&cond)
+    );
+
+    loop {
+        let Some((_, else_expr)) = else_branch else {
+            let msg = "if-expression is missing a final else-block to handle the case where all conditions are false.
+If you want a conditional assert, put the assert! inside the if block.";
+            return Err(Error::new_spanned(if_token, msg));
+        };
+
+        match *else_expr {
+            syn::Expr::If(nested_if) => {
+                let syn::ExprIf {
+                    cond,
+                    then_branch,
+                    else_branch: inner_else_branch,
+                    ..
+                } = nested_if;
+
+                let mut format_cond = format_message.clone();
+                format_cond.add_cause(format_args!(
+                    "{}
+  - else-if condition `{}` was true
+    - then-block `{}` evaluated to false",
+                    cause_message,
+                    printable_expr_string(&cond),
+                    printable_expr_string(&then_branch)
+                ));
+
+                out.extend(quote! {
+                    else if #cond {
+                        if #then_branch { /* assertion passed */ } else { ::std::panic!(#format_cond); }
+                    }
+                });
+
+                cause_message = format!(
+                    "{}
+  - else-if condition `{}` was false",
+                    cause_message,
+                    printable_expr_string(&cond)
+                );
+
+                else_branch = inner_else_branch;
+            }
+            else_block => {
+                let mut format_else = format_message;
+                format_else.add_cause(format_args!(
+                    "{}
+  - else-block `{}` evaluated to false",
+                    cause_message,
+                    printable_expr_string(&else_block)
+                ));
+
+                out.extend(quote! {
+                    else {
+                        if #else_block { /* assertion passed */ } else { ::std::panic!(#format_else); }
+                    }
+                });
+
+                break;
+            }
+        }
+    }
+
+    // we could analyze the blocks as well, but that is a bit excessive.
+    // If you want better output, put the assert in the if and not the other way around.
+
+    Ok(quote! { #[allow(unreachable_code, unused_braces)] {
+        #setup
+        #out
+    }})
 }
 
 fn assert_true_flavor() -> TokenStream {

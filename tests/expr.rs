@@ -388,12 +388,18 @@ fn test_if() {
 
     assert_throws!(
         one_assert::assert!(if x == 1 { false } else { y == 3 }),
-        "assertion `if x == 1 { false } else { y == 3 }` failed"
+        "assertion `if x == 1 { false } else { y == 3 }` failed
+  caused by: 
+  - if condition `x == 1` was true
+    - then-block `{ false }` evaluated to false"
     );
 
     assert_throws!(
         one_assert::assert!(if x == 2 { true } else { y == 3 }),
-        "assertion `if x == 2 { true } else { y == 3 }` failed"
+        "assertion `if x == 2 { true } else { y == 3 }` failed
+  caused by: 
+  - if condition `x == 2` was false
+  - else-block `{ y == 3 }` evaluated to false"
     );
 
     assert_throws!(
@@ -407,7 +413,11 @@ fn test_if() {
             unreachable!()
         }),
         "assertion `if x == 0 { true } else if x == 1 { y == x } else if x == 2 { false } else
-{ unreachable! () }` failed"
+{ unreachable! () }` failed
+  caused by: 
+  - if condition `x == 0` was false
+  - else-if condition `x == 1` was true
+    - then-block `{ y == x }` evaluated to false"
     );
 
     assert_throws!(
@@ -427,7 +437,13 @@ fn test_if() {
             }
         }),
         "assertion `if x == 0 { true } else if x == 5 { y == x } else if false { true } else if x
-== 2 { false } else { if x == 1 { y == 3 } else { false } }` failed"
+== 2 { false } else { if x == 1 { y == 3 } else { false } }` failed
+  caused by: 
+  - if condition `x == 0` was false
+  - else-if condition `x == 5` was false
+  - else-if condition `false` was false
+  - else-if condition `x == 2` was false
+  - else-block `{ if x == 1 { y == 3 } else { false } }` evaluated to false"
     );
 }
 

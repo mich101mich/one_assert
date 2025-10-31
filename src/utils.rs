@@ -2,6 +2,14 @@
 
 use crate::*;
 
+pub fn printable_expr_string(expr: &impl ToTokens) -> String {
+    // escape braces for format strings
+    expr.to_token_stream()
+        .to_string()
+        .replace('{', "{{")
+        .replace('}', "}}")
+}
+
 /// A workaround for Spans on stable Rust.
 ///
 /// Span manipulation doesn't work on stable Rust, which also means that spans cannot be joined
@@ -32,53 +40,6 @@ impl FullSpan {
         let mut ret = a.with_span(self.0);
         ret.extend(b.with_span(self.1));
         ret
-    }
-}
-
-pub(crate) enum FieldIdent {
-    Named(syn::Ident),
-    Index(proc_macro2::Literal),
-}
-impl FieldIdent {
-    pub fn from_index(i: usize, span: Span) -> FieldIdent {
-        let mut literal = proc_macro2::Literal::usize_unsuffixed(i);
-        literal.set_span(span);
-        FieldIdent::Index(literal)
-    }
-}
-impl ToTokens for FieldIdent {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        match self {
-            FieldIdent::Named(ident) => tokens.extend(quote! { #ident }),
-            FieldIdent::Index(index) => tokens.extend(quote! { #index }),
-        }
-    }
-}
-impl Display for FieldIdent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            FieldIdent::Named(ident) => write!(f, "{ident}"),
-            FieldIdent::Index(index) => write!(f, "{index}"),
-        }
-    }
-}
-
-/// Format a list of items as a comma-separated list, with "or" before the last item.
-pub(crate) fn list_items<T>(items: &[T], mut display: impl FnMut(&T) -> String) -> String {
-    match items {
-        [] => String::new(),
-        [x] => display(x),
-        [a, b] => format!("{} or {}", display(a), display(b)),
-        [start @ .., last] => {
-            let mut s = String::new();
-            for item in start {
-                s += &display(item);
-                s += ", ";
-            }
-            s += "or ";
-            s += &display(last);
-            s
-        }
     }
 }
 

@@ -189,8 +189,7 @@ pub(crate) fn eval_not_expr(
         syn::Expr::Group(_) => unreachable!(), // inlined at the start of the function
 
         // !(if cond { ... } else { ... })
-        syn::Expr::If(_) => {} // we could analyze the condition and/or blocks, but that is a bit excessive.
-        // If you want better output, put the assert in the if and not the other way around.
+        syn::Expr::If(_) => {} // Not doing the same analysis as in resolve_if, because that would be too convoluted of a panic message.
 
         // !(expr[index])
         syn::Expr::Index(syn::ExprIndex {

@@ -80,7 +80,7 @@ impl Variables {
             });
 
             // See note at the end of the file for an explanation on the span manipulation here
-            let expr_span = utils::FullSpan::from_spanned(&expr);
+            let expr_span = FullSpan::from_spanned(&expr);
             expr_span.apply(quote! { #var_ident }, quote! { .0 })
         };
 

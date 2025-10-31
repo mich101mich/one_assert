@@ -83,8 +83,7 @@ fn test_one_assert() {
     assert_throws!(
         one_assert::assert!(x && false),
         "assertion `x && false` failed
-     left: true
-    right: false",
+  caused by: left side of `&&` evaluated to true, but right side evaluated to false",
     );
 }
 
@@ -102,8 +101,7 @@ fn test_one_assert_message() {
     assert_throws!(
         one_assert::assert!(x && false, "x={}", x),
         "assertion `x && false` failed: x=true
-     left: true
-    right: false",
+  caused by: left side of `&&` evaluated to true, but right side evaluated to false",
     );
 }
 
@@ -138,6 +136,40 @@ fn test_single_evaluation() {
      left: true
     right: false",
     );
+}
+
+#[test]
+fn test_borrows_input() {
+    static mut CALLED_DEBUG: i32 = 0;
+
+    struct PanicsOnDebug;
+    impl std::fmt::Debug for PanicsOnDebug {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            unsafe {
+                CALLED_DEBUG += 1;
+            }
+            f.write_str("hi")
+        }
+    }
+    impl PartialEq<i32> for PanicsOnDebug {
+        fn eq(&self, x: &i32) -> bool {
+            *x == 1
+        }
+    }
+
+    let x = PanicsOnDebug;
+    one_assert::assert!(x == 1); // assertion passes, so Debug is never called
+    let num_called = unsafe { CALLED_DEBUG };
+    assert_eq!(num_called, 0);
+
+    assert_throws!(
+        one_assert::assert!(x == 2),
+        "assertion `x == 2` failed
+     left: hi
+    right: 2",
+    );
+    let num_called = unsafe { CALLED_DEBUG };
+    assert_eq!(num_called, 1);
 }
 
 #[test]

@@ -1,0 +1,11 @@
+error: Expected a boolean expression, found an assignment
+ --> tests/fail/expr/binary2.rs:3:27
+  |
+3 |     one_assert::assert!(x += 1);
+  |                           ^^
+
+error: Expected a boolean expression, found an assignment
+ --> tests/fail/expr/binary2.rs:5:27
+  |
+5 |     one_assert::assert!(x |= true);
+  |                           ^^

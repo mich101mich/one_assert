@@ -4,6 +4,20 @@ error: condition has to be followed by a comma, if a message is provided
 4 |     one_assert::assert!(if x == 1 { 1 } else { 2 } else { 3 }); // too many else
   |                                                    ^^^^
 
+error: if-expression is missing a final else-block to handle the case where all conditions are false.
+       If you want a conditional assert, put the assert! inside the if block.
+ --> tests/fail/expr/if.rs:5:25
+  |
+5 |     one_assert::assert!(if x == 1 { true });                    // no else
+  |                         ^^
+
+error: if-expression is missing a final else-block to handle the case where all conditions are false.
+       If you want a conditional assert, put the assert! inside the if block.
+ --> tests/fail/expr/if.rs:7:25
+  |
+7 |     one_assert::assert!(if x == 1 { true } else if true { false } else if false { true } ); // no final else
+  |                         ^^
+
 error: expected `if` or curly braces
  --> tests/fail/expr/if.rs:8:72
   |
@@ -22,32 +36,8 @@ error[E0308]: mismatched types
 3 |     one_assert::assert!(if x == 1 { 1 } else { 2 });            // not bool
   |                                                ^ expected `bool`, found integer
 
-error[E0317]: `if` may be missing an `else` clause
- --> tests/fail/expr/if.rs:5:25
-  |
-5 |     one_assert::assert!(if x == 1 { true });                    // no else
-  |                         ^^^^^^^^^^^^----^^
-  |                         |           |
-  |                         |           found here
-  |                         expected `bool`, found `()`
-  |
-  = note: `if` expressions without `else` evaluate to `()`
-  = help: consider adding an `else` block that evaluates to the expected type
-
 error[E0308]: mismatched types
  --> tests/fail/expr/if.rs:6:51
   |
 6 |     one_assert::assert!(if x == 1 { true } else { 1 });         // mismatched types
   |                                                   ^ expected `bool`, found integer
-
-error[E0317]: `if` may be missing an `else` clause
- --> tests/fail/expr/if.rs:7:72
-  |
-7 |     one_assert::assert!(if x == 1 { true } else if true { false } else if false { true } ); // no final else
-  |                                                                        ^^^^^^^^^^^----^^
-  |                                                                        |          |
-  |                                                                        |          found here
-  |                                                                        expected `bool`, found `()`
-  |
-  = note: `if` expressions without `else` evaluate to `()`
-  = help: consider adding an `else` block that evaluates to the expected type

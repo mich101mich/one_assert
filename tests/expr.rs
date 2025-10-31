@@ -109,8 +109,7 @@ fn test_binary() {
     assert_throws!(
         one_assert::assert!(b && false),
         "assertion `b && false` failed
-     left: true
-    right: false"
+  caused by: left side of `&&` evaluated to true, but right side evaluated to false"
     );
 
     one_assert::assert!(b & true);
@@ -126,8 +125,7 @@ fn test_binary() {
     assert_throws!(
         one_assert::assert!(b || false),
         "assertion `b || false` failed
-     left: false
-    right: false"
+  caused by: both sides of `||` evaluated to false"
     );
 
     one_assert::assert!(b | true);
@@ -188,10 +186,7 @@ fn test_block() {
                 let a = 1;
                 a == 2
             }),
-            "assertion `{ let a = 1 ; a == 2 }` failed
-  caused by: block return assertion `a == 2` failed
-     left: 1
-    right: 2"
+            "assertion `{ let a = 1 ; a == 2 }` failed"
         );
     } else {
         assert_throws!(
@@ -199,10 +194,7 @@ fn test_block() {
                 let a = 1;
                 a == 2
             }),
-            "assertion `{ let a = 1; a == 2 }` failed
-  caused by: block return assertion `a == 2` failed
-     left: 1
-    right: 2"
+            "assertion `{ let a = 1; a == 2 }` failed"
         );
     }
 }
@@ -341,43 +333,26 @@ fn test_cast() {
 // #[test]
 // fn test_closure() {}
 
-#[test]
-fn test_const() {
-    one_assert::assert!(
-        const {
-            let a = 1;
-            a == 1
-        }
-    );
+// NOTE: inline consts are only stable since Rust 1.79, which is after the current MSRV of 1.70
+// #[test]
+// fn test_const() {
+//     one_assert::assert!(
+//         const {
+//             let a = 1;
+//             a == 1
+//         }
+//     );
 
-    if rustc_version::version().unwrap() < rustc_version::Version::new(1, 75, 0) {
-        assert_throws!(
-            one_assert::assert!(
-                const {
-                    let a = 1;
-                    a == 2
-                }
-            ),
-            "assertion `const { let a = 1 ; a == 2 }` failed
-  caused by: block return assertion `a == 2` failed
-     left: 1
-    right: 2"
-        );
-    } else {
-        assert_throws!(
-            one_assert::assert!(
-                const {
-                    let a = 1;
-                    a == 2
-                }
-            ),
-            "assertion `const { let a = 1; a == 2 }` failed
-  caused by: block return assertion `a == 2` failed
-     left: 1
-    right: 2"
-        );
-    }
-}
+//     assert_throws!(
+//         one_assert::assert!(
+//             const {
+//                 let a = 1;
+//                 a == 2
+//             }
+//         ),
+//         "assertion `const { let a = 1; a == 2 }` failed"
+//     );
+// }
 
 // #[test]
 // fn test_continue() {}
@@ -405,6 +380,7 @@ fn test_field() {
 // fn test_group() {}
 
 #[test]
+#[allow(clippy::collapsible_else_if)]
 fn test_if() {
     let x = 1;
     let y = 2;
@@ -413,17 +389,17 @@ fn test_if() {
     assert_throws!(
         one_assert::assert!(if x == 1 { false } else { y == 3 }),
         "assertion `if x == 1 { false } else { y == 3 }` failed
-    condition `x == 1`: true
-  caused by: block return assertion `false` failed"
+  caused by: 
+  - if condition `x == 1` was true
+    - then-block `{ false }` evaluated to false"
     );
 
     assert_throws!(
         one_assert::assert!(if x == 2 { true } else { y == 3 }),
         "assertion `if x == 2 { true } else { y == 3 }` failed
-    condition `x == 2`: false
-  caused by: block return assertion `y == 3` failed
-     left: 2
-    right: 3"
+  caused by: 
+  - if condition `x == 2` was false
+  - else-block `{ y == 3 }` evaluated to false"
     );
 
     assert_throws!(
@@ -438,11 +414,10 @@ fn test_if() {
         }),
         "assertion `if x == 0 { true } else if x == 1 { y == x } else if x == 2 { false } else
 { unreachable! () }` failed
-    condition `x == 0`: false
-    condition `x == 1`: true
-  caused by: block return assertion `y == x` failed
-     left: 2
-    right: 1"
+  caused by: 
+  - if condition `x == 0` was false
+  - else-if condition `x == 1` was true
+    - then-block `{ y == x }` evaluated to false"
     );
 
     assert_throws!(
@@ -463,15 +438,12 @@ fn test_if() {
         }),
         "assertion `if x == 0 { true } else if x == 5 { y == x } else if false { true } else if x
 == 2 { false } else { if x == 1 { y == 3 } else { false } }` failed
-    condition `x == 0`: false
-    condition `x == 5`: false
-     condition `false`: false
-    condition `x == 2`: false
-  caused by: block return assertion `if x == 1 { y == 3 } else { false }` failed
-    condition `x == 1`: true
-  caused by: block return assertion `y == 3` failed
-     left: 2
-    right: 3"
+  caused by: 
+  - if condition `x == 0` was false
+  - else-if condition `x == 5` was false
+  - else-if condition `false` was false
+  - else-if condition `x == 2` was false
+  - else-block `{ if x == 1 { y == 3 } else { false } }` evaluated to false"
     );
 }
 
@@ -569,11 +541,7 @@ fn test_match() {
                 (_, 2) => z == 5,
                 _ => false,
             }),
-            "assertion `match(x, y) { (2, _) => true, (_, 2) => z == 5, _ => false, }` failed
-    matched value: (1, 2)
-  caused by: match (x, y) entered arm `(_, 2)` where assertion `z == 5` failed
-     left: 3
-    right: 5"
+            "assertion `match(x, y) { (2, _) => true, (_, 2) => z == 5, _ => false, }` failed"
         );
 
         assert_throws!(
@@ -585,12 +553,7 @@ fn test_match() {
                 }
                 _ => false,
             }),
-            "assertion `match x { 2 => true, _ if y < 5 => { let w = 4 ; z == w } _ => false, }` failed
-    matched value: 1
-  caused by: match x entered arm `_ if y < 5` where assertion `{ let w = 4 ; z == w }` failed
-  caused by: block return assertion `z == w` failed
-     left: 3
-    right: 4"
+            "assertion `match x { 2 => true, _ if y < 5 => { let w = 4 ; z == w } _ => false, }` failed"
         );
     } else {
         assert_throws!(
@@ -599,11 +562,7 @@ fn test_match() {
                 (_, 2) => z == 5,
                 _ => false,
             }),
-            "assertion `match (x, y) { (2, _) => true, (_, 2) => z == 5, _ => false, }` failed
-    matched value: (1, 2)
-  caused by: match (x, y) entered arm `(_, 2)` where assertion `z == 5` failed
-     left: 3
-    right: 5"
+            "assertion `match (x, y) { (2, _) => true, (_, 2) => z == 5, _ => false, }` failed"
         );
 
         assert_throws!(
@@ -615,12 +574,7 @@ fn test_match() {
                 }
                 _ => false,
             }),
-            "assertion `match x { 2 => true, _ if y < 5 => { let w = 4; z == w } _ => false, }` failed
-    matched value: 1
-  caused by: match x entered arm `_ if y < 5` where assertion `{ let w = 4; z == w }` failed
-  caused by: block return assertion `z == w` failed
-     left: 3
-    right: 4"
+            "assertion `match x { 2 => true, _ if y < 5 => { let w = 4; z == w } _ => false, }` failed"
         );
     }
 }
@@ -639,6 +593,7 @@ fn test_methodcall() {
 }
 
 #[test]
+#[allow(unused_parens)]
 fn test_paren() {
     one_assert::assert!((true));
 
@@ -727,6 +682,7 @@ fn test_try() {
 // fn test_tuple() {}
 
 #[test]
+#[allow(clippy::useless_concat)]
 fn test_unary() {
     {
         #[derive(Debug)]
@@ -746,7 +702,7 @@ fn test_unary() {
             one_assert::assert!(!b),
             concat!(
                 "assertion `! b` failed
-    assertion negated: true"
+  caused by: negated expression `b` evaluated to true"
             )
         );
     }
@@ -765,13 +721,7 @@ fn test_unary() {
         one_assert::assert!(-a);
 
         let b = OpToBool(false);
-        assert_throws!(
-            one_assert::assert!(-b),
-            concat!(
-                "assertion `- b` failed
-    original: OpToBool(false)"
-            )
-        );
+        assert_throws!(one_assert::assert!(-b), concat!("assertion `- b` failed"));
     }
 
     {
@@ -788,24 +738,23 @@ fn test_unary() {
         one_assert::assert!(*a);
 
         let b = OpToBool(false);
-        assert_throws!(
-            one_assert::assert!(*b),
-            "assertion `* b` failed
-    original: OpToBool(false)"
-        );
+        assert_throws!(one_assert::assert!(*b), "assertion `* b` failed");
     }
 }
 
 #[test]
-#[allow(clippy::transmute_int_to_bool, clippy::missing_transmute_annotations)]
+#[allow(unknown_lints)] // newer rust requires unnecessary_transmutes, older rusts don't know it
+#[allow(
+    clippy::transmute_int_to_bool,
+    clippy::missing_transmute_annotations,
+    unnecessary_transmutes
+)]
 fn test_unsafe() {
     one_assert::assert!(unsafe { std::mem::transmute(1u8) });
 
     assert_throws!(
         one_assert::assert!(unsafe { std::mem::transmute(0u8) }),
-        "assertion `unsafe { std :: mem :: transmute(0u8) }` failed
-  caused by: block return assertion `std :: mem :: transmute(0u8)` failed
-    arg 0: 0"
+        "assertion `unsafe { std :: mem :: transmute(0u8) }` failed"
     );
 }
 

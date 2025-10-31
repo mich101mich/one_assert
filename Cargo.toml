@@ -1,10 +1,10 @@
 [package]
 name = "one_assert"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 authors = ["mich101mich <mich101mich@gmail.com>"]
 rust-version = "1.70.0"
-description = "One assert! macro to replace them all"
+description = "One assert! to replace them all"
 repository = "https://github.com/mich101mich/one_assert"
 readme = "Readme.md"
 license = "MIT OR Apache-2.0"
